@@ -72,7 +72,22 @@ func (s *SubHandler) subHeaders(c *gin.Context) {
 }
 
 func (s *SubHandler) addHeaders(c *gin.Context, headers []string) {
-	c.Writer.Header().Set("Subscription-Userinfo", headers[0])
-	c.Writer.Header().Set("Profile-Update-Interval", headers[1])
-	c.Writer.Header().Set("Profile-Title", headers[2])
+	showInfo, err := s.SettingService.GetSubShowInfo()
+	if err != nil {
+		logger.Warning("read subShowInfo failed: ", err)
+		showInfo = false
+	}
+	addSubscriptionHeaders(c, headers, showInfo)
+}
+
+func addSubscriptionHeaders(c *gin.Context, headers []string, showInfo bool) {
+	if len(headers) > 0 && showInfo {
+		c.Writer.Header().Set("Subscription-Userinfo", headers[0])
+	}
+	if len(headers) > 1 {
+		c.Writer.Header().Set("Profile-Update-Interval", headers[1])
+	}
+	if len(headers) > 2 {
+		c.Writer.Header().Set("Profile-Title", headers[2])
+	}
 }

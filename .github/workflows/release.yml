@@ -11,6 +11,8 @@ on:
       - "*"
     paths:
       - '.github/workflows/release.yml'
+      - '.gitmodules'
+      - 'frontend'
       - 'frontend/**'
       - '**.sh'
       - '**.go'

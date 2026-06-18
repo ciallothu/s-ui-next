@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import 'visual_editor.dart';
 import 'widgets.dart';
 
 class ConfigPage extends StatefulWidget {
@@ -58,8 +59,9 @@ class _ConfigPageState extends State<ConfigPage> with SingleTickerProviderStateM
     final section = <String, dynamic>{for (final key in keys) key: config[key]};
     await showDialog<bool>(
       context: context,
-      builder: (_) => JsonEditorDialog(
+      builder: (_) => VisualEditorDialog(
         title: title,
+        resource: 'config',
         initialValue: section,
         onSave: (value) async {
           if (value is! Map) throw const FormatException('配置必须是 JSON 对象');
@@ -81,8 +83,9 @@ class _ConfigPageState extends State<ConfigPage> with SingleTickerProviderStateM
   Future<void> editSettings() async {
     await showDialog<bool>(
       context: context,
-      builder: (_) => JsonEditorDialog(
+      builder: (_) => VisualEditorDialog(
         title: '面板与订阅设置',
+        resource: 'settings',
         initialValue: settings,
         onSave: (value) async {
           if (value is! Map) throw const FormatException('设置必须是 JSON 对象');

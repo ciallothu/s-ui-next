@@ -299,12 +299,15 @@ class _TrafficPainter extends CustomPainter {
   void drawSeries(Canvas canvas, Size size, List<Map<String, dynamic>> values, Color color, int minTime, int maxTime, int maxTraffic) {
     if (values.isEmpty) return;
     final paint = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 2;
+    final pointPaint = Paint()..color = color..style = PaintingStyle.fill;
     final path = Path();
+    final points = <Offset>[];
     for (var index = 0; index < values.length; index++) {
       final time = _int(values[index]['dateTime']);
       final traffic = _int(values[index]['traffic']);
       final x = maxTime == minTime ? size.width / 2 : (time - minTime) / (maxTime - minTime) * size.width;
       final y = size.height - (traffic / maxTraffic * size.height);
+      points.add(Offset(x, y));
       if (index == 0) {
         path.moveTo(x, y);
       } else {
@@ -312,6 +315,10 @@ class _TrafficPainter extends CustomPainter {
       }
     }
     canvas.drawPath(path, paint);
+    for (final point in points) {
+      canvas.drawCircle(point, 3.25, pointPaint);
+      canvas.drawCircle(point, 1.25, Paint()..color = Colors.white);
+    }
   }
 
   @override

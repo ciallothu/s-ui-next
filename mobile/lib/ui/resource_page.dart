@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../state/app_state.dart';
+import 'visual_editor.dart';
 import 'widgets.dart';
 
 class ResourcePage extends StatefulWidget {
@@ -59,30 +60,14 @@ class _ResourcePageState extends State<ResourcePage> {
     return items.where((item) => jsonEncode(item).toLowerCase().contains(query)).toList();
   }
 
-  dynamic template() {
-    switch (widget.resource) {
-      case 'clients':
-        return {'id': 0, 'enable': true, 'name': '', 'config': {}, 'inbounds': [], 'volume': 0, 'expiry': 0, 'desc': '', 'group': ''};
-      case 'inbounds':
-        return {'id': 0, 'type': 'vless', 'tag': '', 'listen': '::', 'listen_port': 443, 'tls_id': 0, 'transport': {}};
-      case 'outbounds':
-        return {'id': 0, 'type': 'direct', 'tag': ''};
-      case 'endpoints':
-        return {'id': 0, 'type': 'wireguard', 'tag': ''};
-      case 'services':
-        return {'id': 0, 'type': 'resolved', 'tag': '', 'listen': '::', 'listen_port': 53, 'tls_id': 0};
-      case 'tls':
-        return {'id': 0, 'name': '', 'server': {'enabled': true}, 'client': {}};
-      default:
-        return <String, dynamic>{};
-    }
-  }
+  dynamic template() => VisualEditorSchema.forResource(widget.resource).defaultValue();
 
   Future<void> edit(dynamic item, String action) async {
     await showDialog<bool>(
       context: context,
-      builder: (_) => JsonEditorDialog(
+      builder: (_) => VisualEditorDialog(
         title: '${widget.title} · ${_actionName(action)}',
+        resource: widget.resource,
         initialValue: item,
         onSave: (value) async {
           await context.read<AppState>().saveResource(widget.resource, action, value);

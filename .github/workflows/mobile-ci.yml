@@ -12,6 +12,8 @@ on:
       - "api/**"
       - "database/**"
       - "service/**"
+      - "sub/**"
+      - "util/**"
       - "logger/**"
       - "web/**"
       - "go.mod"
@@ -26,6 +28,8 @@ on:
       - "api/**"
       - "database/**"
       - "service/**"
+      - "sub/**"
+      - "util/**"
       - "logger/**"
       - "web/**"
       - "go.mod"
@@ -61,7 +65,7 @@ jobs:
 
       - name: Format check
         run: |
-          files=$(gofmt -l api/apiHandler.go api/apiV2Handler.go api/apiV3Handler.go database/backup.go database/model/model.go logger/logger.go service/config.go service/queries.go service/stats.go service/user.go web/web.go)
+          files=$(gofmt -l api/apiHandler.go api/apiV2Handler.go api/apiV3Handler.go database/backup.go database/model/model.go logger/logger.go service/config.go service/queries.go service/stats.go service/user.go sub/subHandler.go sub/subHandler_test.go web/web.go)
           if [ -n "$files" ]; then
             echo "The following files need gofmt:"
             echo "$files"
@@ -69,7 +73,7 @@ jobs:
           fi
 
       - name: Test API packages
-        run: go test ./api ./service ./logger ./web
+        run: go test ./api ./service ./logger ./sub ./util ./web
 
   android-arm64:
     name: Check Android arm64
