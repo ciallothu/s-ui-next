@@ -1,16 +1,43 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/alireza0/s-ui/database"
 	"github.com/alireza0/s-ui/database/model"
 	"github.com/alireza0/s-ui/logger"
 	"github.com/alireza0/s-ui/util/common"
+	"github.com/pquerna/otp/totp"
+	"golang.org/x/crypto/bcrypt"
 )
 
-type UserService struct {
+type UserService struct{}
+
+type pendingTOTPEntry struct {
+	Secret string
+	Expiry time.Time
+}
+
+var (
+	pendingTOTP    sync.Map
+	recoveryCodeMu sync.Mutex
+)
+
+func hashPassword(password string) (string, error) {
+	value, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(value), err
+}
+
+func verifyPassword(stored, password string) bool {
+	if strings.HasPrefix(stored, "$2a$") || strings.HasPrefix(stored, "$2b$") || strings.HasPrefix(stored, "$2y$") {
+		return bcrypt.CompareHashAndPassword([]byte(stored), []byte(password)) == nil
+	}
+	return stored == password
 }
 
 func (s *UserService) GetFirstUser() (*model.User, error) {
@@ -36,54 +63,80 @@ func (s *UserService) UpdateFirstUser(username string, password string) error {
 	user := &model.User{}
 	err := db.Model(model.User{}).First(user).Error
 	if database.IsNotFound(err) {
+		hashed, hashErr := hashPassword(password)
+		if hashErr != nil {
+			return hashErr
+		}
 		user.Username = username
-		user.Password = password
+		user.Password = hashed
 		return db.Model(model.User{}).Create(user).Error
 	} else if err != nil {
 		return err
 	}
+	hashed, err := hashPassword(password)
+	if err != nil {
+		return err
+	}
 	user.Username = username
-	user.Password = password
+	user.Password = hashed
 	return db.Save(user).Error
 }
 
 func (s *UserService) Login(username string, password string, remoteIP string) (string, error) {
-	user := s.CheckUser(username, password, remoteIP)
-	if user == nil {
-		return "", common.NewError("wrong user or password! IP: ", remoteIP)
+	user, err := s.CheckPassword(username, password, remoteIP)
+	if err != nil {
+		return "", err
 	}
+	s.RecordLogin(user.Username, remoteIP)
 	return user.Username, nil
 }
 
 func (s *UserService) CheckUser(username string, password string, remoteIP string) *model.User {
+	user, _ := s.CheckPassword(username, password, remoteIP)
+	return user
+}
+
+func (s *UserService) CheckPassword(username string, password string, remoteIP string) (*model.User, error) {
 	db := database.GetDB()
 
 	user := &model.User{}
 	err := db.Model(model.User{}).
-		Where("username = ? and password = ?", username, password).
+		Where("username = ?", username).
 		First(user).
 		Error
 	if database.IsNotFound(err) {
-		return nil
+		return nil, common.NewError("wrong user or password! IP: ", remoteIP)
 	} else if err != nil {
 		logger.Warning("check user err:", err, " IP: ", remoteIP)
-		return nil
+		return nil, err
+	}
+	if !verifyPassword(user.Password, password) {
+		return nil, common.NewError("wrong user or password! IP: ", remoteIP)
+	}
+	if !strings.HasPrefix(user.Password, "$2") {
+		if hashed, hashErr := hashPassword(password); hashErr == nil {
+			db.Model(model.User{}).Where("id = ?", user.Id).Update("password", hashed)
+			user.Password = hashed
+		}
 	}
 
+	return user, nil
+}
+
+func (s *UserService) RecordLogin(username, remoteIP string) {
 	lastLoginTxt := time.Now().Format("2006-01-02 15:04:05") + " " + remoteIP
-	err = db.Model(model.User{}).
+	err := database.GetDB().Model(model.User{}).
 		Where("username = ?", username).
 		Update("last_logins", &lastLoginTxt).Error
 	if err != nil {
 		logger.Warning("unable to log login data", err)
 	}
-	return user
 }
 
 func (s *UserService) GetUsers() (*[]model.User, error) {
 	var users []model.User
 	db := database.GetDB()
-	err := db.Model(model.User{}).Select("id,username,last_logins").Scan(&users).Error
+	err := db.Model(model.User{}).Select("id,username,last_logins,totp_enabled").Scan(&users).Error
 	if err != nil {
 		return nil, err
 	}
@@ -93,13 +146,103 @@ func (s *UserService) GetUsers() (*[]model.User, error) {
 func (s *UserService) ChangePass(id string, oldPass string, newUser string, newPass string) error {
 	db := database.GetDB()
 	user := &model.User{}
-	err := db.Model(model.User{}).Where("id = ? AND password = ?", id, oldPass).First(user).Error
+	err := db.Model(model.User{}).Where("id = ?", id).First(user).Error
 	if err != nil || database.IsNotFound(err) {
 		return err
 	}
+	if !verifyPassword(user.Password, oldPass) {
+		return common.NewError("wrong current password")
+	}
+	hashed, err := hashPassword(newPass)
+	if err != nil {
+		return err
+	}
 	user.Username = newUser
-	user.Password = newPass
+	user.Password = hashed
 	return db.Save(user).Error
+}
+
+func (s *UserService) BeginTOTP(username, issuer string) (map[string]string, error) {
+	if issuer == "" {
+		issuer = "S-UI"
+	}
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: issuer, AccountName: username})
+	if err != nil {
+		return nil, err
+	}
+	pendingTOTP.Store(username, pendingTOTPEntry{Secret: key.Secret(), Expiry: time.Now().Add(10 * time.Minute)})
+	return map[string]string{"secret": key.Secret(), "uri": key.URL()}, nil
+}
+
+func recoveryHash(code string) string {
+	sum := sha256.Sum256([]byte(strings.ToUpper(strings.TrimSpace(code))))
+	return hex.EncodeToString(sum[:])
+}
+
+func (s *UserService) EnableTOTP(username, code string) ([]string, error) {
+	raw, ok := pendingTOTP.Load(username)
+	if !ok {
+		return nil, common.NewError("TOTP enrollment expired")
+	}
+	pending := raw.(pendingTOTPEntry)
+	if time.Now().After(pending.Expiry) || !totp.Validate(strings.TrimSpace(code), pending.Secret) {
+		return nil, common.NewError("invalid TOTP code")
+	}
+	codes := make([]string, 10)
+	hashes := make([]string, 10)
+	for i := range codes {
+		codes[i] = strings.ToUpper(common.Random(10))
+		hashes[i] = recoveryHash(codes[i])
+	}
+	encoded, _ := json.Marshal(hashes)
+	err := database.GetDB().Model(&model.User{}).Where("username = ?", username).Updates(map[string]interface{}{
+		"totp_secret": pending.Secret, "totp_enabled": true, "recovery_codes": encoded,
+	}).Error
+	if err == nil {
+		pendingTOTP.Delete(username)
+	}
+	return codes, err
+}
+
+func (s *UserService) VerifySecondFactor(user *model.User, code string) bool {
+	code = strings.TrimSpace(code)
+	if !user.TOTPEnabled {
+		return true
+	}
+	if totp.Validate(code, user.TOTPSecret) {
+		return true
+	}
+	recoveryCodeMu.Lock()
+	defer recoveryCodeMu.Unlock()
+	if err := database.GetDB().Where("id = ?", user.Id).First(user).Error; err != nil {
+		return false
+	}
+	var hashes []string
+	if json.Unmarshal(user.RecoveryCodes, &hashes) != nil {
+		return false
+	}
+	wanted := recoveryHash(code)
+	for index, hash := range hashes {
+		if hash == wanted {
+			hashes = append(hashes[:index], hashes[index+1:]...)
+			encoded, _ := json.Marshal(hashes)
+			return database.GetDB().Model(&model.User{}).Where("id = ?", user.Id).Update("recovery_codes", encoded).Error == nil
+		}
+	}
+	return false
+}
+
+func (s *UserService) DisableTOTP(username, password, code, remoteIP string) error {
+	user, err := s.CheckPassword(username, password, remoteIP)
+	if err != nil {
+		return err
+	}
+	if !s.VerifySecondFactor(user, code) {
+		return common.NewError("invalid TOTP or recovery code")
+	}
+	return database.GetDB().Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+		"totp_secret": "", "totp_enabled": false, "recovery_codes": json.RawMessage("[]"),
+	}).Error
 }
 
 func (s *UserService) LoadTokens() ([]byte, error) {

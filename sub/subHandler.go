@@ -81,7 +81,7 @@ func (s *SubHandler) addHeaders(c *gin.Context, headers []string) {
 }
 
 func addSubscriptionHeaders(c *gin.Context, headers []string, showInfo bool) {
-	if len(headers) > 0 && showInfo {
+	if len(headers) > 0 && showInfo && headers[0] != "" {
 		c.Writer.Header().Set("Subscription-Userinfo", headers[0])
 	}
 	if len(headers) > 1 {

@@ -16,10 +16,22 @@ type Tls struct {
 }
 
 type User struct {
-	Id         uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
-	Username   string `json:"username" form:"username"`
-	Password   string `json:"password" form:"password"`
-	LastLogins string `json:"lastLogin"`
+	Id            uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	Username      string          `json:"username" form:"username" gorm:"uniqueIndex"`
+	Password      string          `json:"-" form:"password"`
+	LastLogins    string          `json:"lastLogin"`
+	TOTPSecret    string          `json:"-" gorm:"column:totp_secret"`
+	TOTPEnabled   bool            `json:"totpEnabled" gorm:"column:totp_enabled;default:false;not null"`
+	RecoveryCodes json.RawMessage `json:"-" gorm:"column:recovery_codes"`
+}
+
+type PasskeyCredential struct {
+	Id         uint            `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserId     uint            `json:"userId" gorm:"index;not null"`
+	Name       string          `json:"name"`
+	Credential json.RawMessage `json:"-" gorm:"not null"`
+	CreatedAt  int64           `json:"createdAt"`
+	LastUsedAt int64           `json:"lastUsedAt"`
 }
 
 type Client struct {

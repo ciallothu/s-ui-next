@@ -56,17 +56,21 @@ func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 
 func (s *SubService) getClientHeaders(client *model.Client) []string {
 	updateInterval, _ := s.SettingService.GetSubUpdates()
-	return util.GetHeaders(client, updateInterval)
+	options := s.SettingService.GetSubInfoOptions()
+	return util.GetHeaders(client, updateInterval, util.SubInfoOptions{
+		Upload: options.Upload, Download: options.Download, Total: options.Total, Expire: options.Expire,
+	})
 }
 
 func (s *SubService) getClientInfo(c *model.Client) string {
 	now := time.Now().Unix()
 
 	var result []string
-	if vol := c.Volume - (c.Up + c.Down); vol > 0 {
+	options := s.SettingService.GetSubInfoOptions()
+	if vol := c.Volume - (c.Up + c.Down); options.Remaining && vol > 0 {
 		result = append(result, fmt.Sprintf("%s%s", s.formatTraffic(vol), "📊"))
 	}
-	if c.Expiry > 0 {
+	if options.Expire && c.Expiry > 0 {
 		result = append(result, fmt.Sprintf("%d%s⏳", (c.Expiry-now)/86400, "Days"))
 	}
 	if len(result) > 0 {

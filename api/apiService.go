@@ -9,6 +9,7 @@ import (
 	"github.com/alireza0/s-ui/logger"
 	"github.com/alireza0/s-ui/service"
 	"github.com/alireza0/s-ui/util"
+	"github.com/alireza0/s-ui/util/common"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,6 +27,7 @@ type ApiService struct {
 	service.PanelService
 	service.StatsService
 	service.ServerService
+	service.AuthService
 }
 
 func (a *ApiService) LoadData(c *gin.Context) {
@@ -261,11 +263,24 @@ func (a *ApiService) postActions(c *gin.Context) (string, json.RawMessage, error
 
 func (a *ApiService) Login(c *gin.Context) {
 	remoteIP := getRemoteIp(c)
-	loginUser, err := a.UserService.Login(c.Request.FormValue("user"), c.Request.FormValue("pass"), remoteIP)
+	user, err := a.UserService.CheckPassword(c.Request.FormValue("user"), c.Request.FormValue("pass"), remoteIP)
 	if err != nil {
 		jsonMsg(c, "", err)
 		return
 	}
+	if user.TOTPEnabled {
+		code := c.Request.FormValue("otp")
+		if code == "" {
+			jsonObj(c, gin.H{"requires2FA": true}, nil)
+			return
+		}
+		if !a.UserService.VerifySecondFactor(user, code) {
+			jsonMsg(c, "", common.NewError("invalid TOTP or recovery code"))
+			return
+		}
+	}
+	loginUser := user.Username
+	a.UserService.RecordLogin(loginUser, remoteIP)
 
 	sessionMaxAge, err := a.SettingService.GetSessionMaxAge()
 	if err != nil {

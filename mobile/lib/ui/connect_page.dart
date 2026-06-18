@@ -17,6 +17,7 @@ class _ConnectPageState extends State<ConnectPage> {
   final token = TextEditingController();
   final username = TextEditingController();
   final password = TextEditingController();
+  final secondFactor = TextEditingController();
   final headers = <_HeaderDraft>[
     _HeaderDraft(ConnectionProfile.cloudflareClientId, ''),
     _HeaderDraft(ConnectionProfile.cloudflareClientSecret, ''),
@@ -24,6 +25,7 @@ class _ConnectPageState extends State<ConnectPage> {
   bool useCredentials = true;
   bool showAdvanced = false;
   bool obscurePassword = true;
+  bool requiresSecondFactor = false;
 
   @override
   void initState() {
@@ -56,6 +58,7 @@ class _ConnectPageState extends State<ConnectPage> {
     token.dispose();
     username.dispose();
     password.dispose();
+    secondFactor.dispose();
     for (final header in headers) {
       header.dispose();
     }
@@ -76,7 +79,15 @@ class _ConnectPageState extends State<ConnectPage> {
     final state = context.read<AppState>();
     try {
       if (useCredentials) {
-        await state.connectWithCredentials(buildProfile(), username.text.trim(), password.text);
+		final required = await state.connectWithCredentials(
+		  buildProfile(),
+		  username.text.trim(),
+		  password.text,
+		  code: secondFactor.text,
+		);
+		if (required && mounted) {
+		  setState(() => requiresSecondFactor = true);
+		}
       } else {
         await state.connectWithToken(buildProfile());
       }
@@ -152,6 +163,19 @@ class _ConnectPageState extends State<ConnectPage> {
                               ),
                             ),
                           ),
+						  if (requiresSecondFactor) ...[
+							const SizedBox(height: 12),
+							TextField(
+							  controller: secondFactor,
+							  autofocus: true,
+							  keyboardType: TextInputType.number,
+							  autocorrect: false,
+							  decoration: const InputDecoration(
+								labelText: '两步验证码或恢复码',
+								prefixIcon: Icon(Icons.security_outlined),
+							  ),
+							),
+						  ],
                         ] else
                           TextField(controller: token, obscureText: true, autocorrect: false, decoration: const InputDecoration(labelText: 'API Token', prefixIcon: Icon(Icons.key_outlined))),
                         const SizedBox(height: 8),

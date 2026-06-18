@@ -90,7 +90,8 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	resultStr := string(result)
 
 	updateInterval, _ := j.SettingService.GetSubUpdates()
-	headers := util.GetHeaders(client, updateInterval)
+	info := j.SettingService.GetSubInfoOptions()
+	headers := util.GetHeaders(client, updateInterval, util.SubInfoOptions{Upload: info.Upload, Download: info.Download, Total: info.Total, Expire: info.Expire})
 
 	return &resultStr, headers, nil
 }

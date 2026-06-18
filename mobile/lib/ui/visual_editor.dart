@@ -93,8 +93,10 @@ class _VisualEditorDialogState extends State<VisualEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog.fullscreen(
-      child: Scaffold(
+    final screen = MediaQuery.sizeOf(context);
+    final compact = screen.width < 600;
+    final editor = Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
         appBar: AppBar(
           title: Text(widget.title),
           leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
@@ -161,6 +163,17 @@ class _VisualEditorDialogState extends State<VisualEditorDialog> {
             ],
           ),
         ),
+      );
+    if (compact) {
+      return Dialog.fullscreen(child: editor);
+    }
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: math.min(960, screen.width - 48),
+        height: math.min(820, screen.height - 48),
+        child: editor,
       ),
     );
   }

@@ -1,9 +1,39 @@
 # S-UI
 **An Advanced Web Panel • Built on SagerNet/Sing-Box**
 
-> Mobile source is available in [`mobile/`](mobile/README.md). Android arm64 and unsigned iPhone arm64 artifacts are built remotely by the `Build S-UI Mobile` GitHub Actions workflow. The app uses the versioned `/apiv3` API and supports custom request headers, including Cloudflare Access Service Tokens.
+This repository is an extended fork of [alireza0/s-ui](https://github.com/alireza0/s-ui). It keeps the upstream sing-box management model while adding a stable API, native mobile clients, stronger authentication, unified Web/App navigation, and richer traffic/log analysis.
 
-![](https://img.shields.io/github/v/release/alireza0/s-ui.svg)
+> Mobile source is available in [`mobile/`](mobile/README.md). Android arm64 and unsigned iPhone arm64 artifacts are built remotely by GitHub Actions; no local mobile build is required. The app uses the versioned `/apiv3` API and supports arbitrary request headers, with Cloudflare Access Service Token headers prefilled.
+
+## What this fork adds
+
+- Android arm64 and iPhone arm64 management apps with visual and raw JSON editors.
+- Versioned `/apiv3` API covering resources, users, usage/statistics, logs, audit history, backup, tools, and service actions.
+- Cloudflare Zero Trust friendly custom headers in the app connection profile.
+- User/date/search filters for usage, statistics, logs, and audit records.
+- Structured DEBUG, INFO, WARNING, and ERROR logs in both Web and App.
+- Granular subscription user-info controls for upload, download, quota, expiry, and node-name remaining quota.
+- OIDC single sign-on, TOTP two-factor authentication with one-time recovery codes, and WebAuthn passkeys.
+- bcrypt password storage with automatic migration from legacy plaintext records after successful login.
+- Web/App navigation parity: users, resources, TLS, core configuration, analytics, logs, administration, settings, and tools.
+- Visual editors backed by optional raw JSON editing, including fields introduced by newer sing-box versions.
+- Historical traffic views that remain stable until refreshed, plus an explicit real-time mode.
+
+## Milestones
+
+- [x] Stable mobile API and secure token lifecycle.
+- [x] Android arm64 and unsigned iPhone arm64 CI/release builds.
+- [x] Visual editors and raw JSON fallback across Web and App.
+- [x] Filterable analytics, structured logs, and dotted traffic charts.
+- [x] OIDC, TOTP/2FA, recovery codes, and passkey management.
+- [x] Seven-workflow GitHub Actions layout: five upstream workflows plus mobile CI and mobile release builds.
+- [ ] Signed iOS distribution (requires an Apple signing identity and provisioning profile).
+
+## Release artifact naming
+
+Tag builds include the tag in every downloadable filename, for example `s-ui-v1.2.0-linux-amd64.tar.gz`, `s-ui-v1.2.0-windows-amd64.zip`, `s-ui-v1.2.0-android-arm64.apk`, and `s-ui-v1.2.0-iphone-arm64-unsigned.ipa`.
+
+![](https://img.shields.io/github/v/release/ciallothu/s-ui.svg)
 ![S-UI Docker pull](https://img.shields.io/docker/pulls/alireza7/s-ui.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alireza0/s-ui)](https://goreportcard.com/report/github.com/alireza0/s-ui)
 [![Downloads](https://img.shields.io/github/downloads/alireza0/s-ui/total.svg)](https://img.shields.io/github/downloads/alireza0/s-ui/total.svg)
@@ -31,7 +61,9 @@
 | Client & Traffic & System Status       | :heavy_check_mark: |
 | Subscription Link (link/json/clash + info)| :heavy_check_mark: |
 | Dark/Light Theme                       | :heavy_check_mark: |
-| API Interface                          | :heavy_check_mark: |
+| Versioned API + Mobile Apps            | :heavy_check_mark: |
+| OIDC, TOTP and Passkeys                | :heavy_check_mark: |
+| Filtered Usage, Statistics and Logs    | :heavy_check_mark: |
 
 ## Supported Platforms
 | Platform | Architecture | Status |

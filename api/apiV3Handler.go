@@ -2,12 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/alireza0/s-ui/config"
 	"github.com/alireza0/s-ui/database"
@@ -47,12 +44,20 @@ func NewAPIv3Handler(g *gin.RouterGroup, apiv2 *APIv2Handler) *APIv3Handler {
 
 func (a *APIv3Handler) initRouter(g *gin.RouterGroup) {
 	g.POST("/auth/login", a.login)
+	g.GET("/auth/methods", a.authMethods)
 
 	protected := g.Group("")
 	protected.Use(a.checkToken)
 	protected.GET("/meta", a.meta)
 	protected.GET("/me", a.me)
 	protected.DELETE("/auth/token", a.logout)
+	protected.GET("/auth/security", a.securitySummary)
+	protected.POST("/auth/totp/begin", a.totpBegin)
+	protected.POST("/auth/totp/enable", a.totpEnable)
+	protected.POST("/auth/totp/disable", a.totpDisable)
+	protected.POST("/auth/passkeys/register/begin", a.passkeyRegisterBegin)
+	protected.POST("/auth/passkeys/register/finish", a.passkeyRegisterFinish)
+	protected.DELETE("/auth/passkeys/:id", a.passkeyDelete)
 	protected.GET("/bootstrap", a.bootstrap)
 
 	protected.GET("/resources/:resource", a.getResource)
@@ -138,6 +143,7 @@ func (a *APIv3Handler) login(c *gin.Context) {
 	var body struct {
 		Username   string `json:"username" form:"username"`
 		Password   string `json:"password" form:"password"`
+		Code       string `json:"code" form:"code"`
 		ExpiryDays int64  `json:"expiryDays" form:"expiryDays"`
 	}
 	if err := c.ShouldBind(&body); err != nil {
@@ -149,11 +155,21 @@ func (a *APIv3Handler) login(c *gin.Context) {
 		v3Error(c, http.StatusBadRequest, common.NewError("username and password are required"))
 		return
 	}
-	username, err := a.UserService.Login(body.Username, body.Password, getRemoteIp(c))
+	user, err := a.UserService.CheckPassword(body.Username, body.Password, getRemoteIp(c))
 	if err != nil {
 		v3Error(c, http.StatusUnauthorized, err)
 		return
 	}
+	if user.TOTPEnabled && strings.TrimSpace(body.Code) == "" {
+		v3OK(c, gin.H{"requires2FA": true})
+		return
+	}
+	if user.TOTPEnabled && !a.UserService.VerifySecondFactor(user, body.Code) {
+		v3Error(c, http.StatusUnauthorized, common.NewError("invalid TOTP or recovery code"))
+		return
+	}
+	username := user.Username
+	a.UserService.RecordLogin(username, getRemoteIp(c))
 	if body.ExpiryDays < 0 {
 		body.ExpiryDays = 30
 	}
@@ -181,8 +197,93 @@ func (a *APIv3Handler) logout(c *gin.Context) {
 func (a *APIv3Handler) meta(c *gin.Context) {
 	v3OK(c, gin.H{
 		"apiVersion": "3", "panelVersion": config.GetVersion(), "panelName": config.GetName(),
-		"features": []string{"resources", "usage-filter", "stats-filter", "structured-logs", "audit", "backup"},
+		"features": []string{"resources", "usage-filter", "stats-filter", "structured-logs", "audit", "backup", "totp", "oidc", "passkey"},
 	})
+}
+
+func (a *APIv3Handler) authMethods(c *gin.Context) { v3OK(c, a.AuthService.PublicAuthMethods()) }
+
+func (a *APIv3Handler) securitySummary(c *gin.Context) {
+	value, err := a.AuthService.SecuritySummary(apiUsername(c))
+	if err != nil {
+		v3Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	v3OK(c, value)
+}
+
+func (a *APIv3Handler) totpBegin(c *gin.Context) {
+	value, err := a.UserService.BeginTOTP(apiUsername(c), "S-UI")
+	if err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	v3OK(c, value)
+}
+
+func (a *APIv3Handler) totpEnable(c *gin.Context) {
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	codes, err := a.UserService.EnableTOTP(apiUsername(c), body.Code)
+	if err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	logger.Audit(apiUsername(c), "enabled TOTP two-factor authentication")
+	v3OK(c, gin.H{"recoveryCodes": codes})
+}
+
+func (a *APIv3Handler) totpDisable(c *gin.Context) {
+	var body struct {
+		Password string `json:"password"`
+		Code     string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := a.UserService.DisableTOTP(apiUsername(c), body.Password, body.Code, getRemoteIp(c)); err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	logger.Audit(apiUsername(c), "disabled TOTP two-factor authentication")
+	v3OK(c, gin.H{"disabled": true})
+}
+
+func (a *APIv3Handler) passkeyRegisterBegin(c *gin.Context) {
+	options, sessionID, err := a.AuthService.BeginPasskeyRegistration(apiUsername(c))
+	if err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	v3OK(c, gin.H{"options": options, "sessionId": sessionID})
+}
+
+func (a *APIv3Handler) passkeyRegisterFinish(c *gin.Context) {
+	sessionID := strings.TrimSpace(c.GetHeader("X-WebAuthn-Session"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.Query("sessionId"))
+	}
+	if err := a.AuthService.FinishPasskeyRegistration(apiUsername(c), sessionID, c.Query("name"), c.Request); err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	logger.Audit(apiUsername(c), "registered a passkey")
+	v3OK(c, gin.H{"registered": true})
+}
+
+func (a *APIv3Handler) passkeyDelete(c *gin.Context) {
+	if err := a.AuthService.DeletePasskey(apiUsername(c), c.Param("id")); err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	logger.Audit(apiUsername(c), "deleted a passkey")
+	v3OK(c, gin.H{"deleted": true})
 }
 
 func (a *APIv3Handler) me(c *gin.Context) {
@@ -360,47 +461,16 @@ func (a *APIv3Handler) changes(c *gin.Context) {
 }
 
 func (a *APIv3Handler) logs(c *gin.Context) {
-	level := strings.ToUpper(c.Query("level"))
-	start, end := queryInt64(c, "start"), queryInt64(c, "end")
-	user, search := c.Query("user"), c.Query("search")
-	offset, limit := queryInt(c, "offset", 0), queryInt(c, "limit", 100)
-	if offset < 0 {
-		offset = 0
+	result, err := a.ApiService.queryStructuredLogs(
+		c.Query("level"), c.Query("user"), c.Query("search"),
+		queryInt64(c, "start"), queryInt64(c, "end"),
+		queryInt(c, "offset", 0), queryInt(c, "limit", 100),
+	)
+	if err != nil {
+		v3Error(c, http.StatusInternalServerError, err)
+		return
 	}
-	if limit <= 0 || limit > 1000 {
-		limit = 100
-	}
-
-	systemEntries, _ := logger.QueryLogs(logger.LogQuery{
-		Level: level, User: user, Search: search, Start: start, End: end, Limit: 5000,
-	})
-	entries := append([]logger.LogEntry{}, systemEntries...)
-	if level == "" || level == "ALL" || level == "INFO" {
-		auditRows, err := a.ConfigService.QueryChanges(service.ChangesFilter{
-			Actor: user, Search: search, Start: start, End: end, Limit: 5000,
-		})
-		if err != nil {
-			v3Error(c, http.StatusInternalServerError, err)
-			return
-		}
-		for _, row := range auditRows.Items {
-			entries = append(entries, logger.LogEntry{
-				Timestamp: row.DateTime, Time: time.Unix(row.DateTime, 0).Format("2006/01/02 15:04:05"),
-				Level: "INFO", Message: fmt.Sprintf("%s %s: %s", row.Action, row.Key, strings.TrimSpace(string(row.Obj))),
-				User: row.Actor, Source: "audit",
-			})
-		}
-	}
-	sort.SliceStable(entries, func(i, j int) bool { return entries[i].Timestamp > entries[j].Timestamp })
-	total := len(entries)
-	if offset > total {
-		offset = total
-	}
-	pageEnd := offset + limit
-	if pageEnd > total {
-		pageEnd = total
-	}
-	v3OK(c, gin.H{"items": entries[offset:pageEnd], "total": total, "offset": offset, "limit": limit})
+	v3OK(c, result)
 }
 
 func (a *APIv3Handler) users(c *gin.Context) {

@@ -57,6 +57,7 @@ func GetDb(exclude string) ([]byte, error) {
 		&model.Endpoint{},
 		&model.Service{},
 		&model.User{},
+		&model.PasskeyCredential{},
 		&model.Tokens{},
 		&model.Stats{},
 		&model.Client{},
@@ -73,6 +74,7 @@ func GetDb(exclude string) ([]byte, error) {
 	var endpoint []model.Endpoint
 	var services []model.Service
 	var users []model.User
+	var passkeys []model.PasskeyCredential
 	var tokens []model.Tokens
 	var clients []model.Client
 	var stats []model.Stats
@@ -125,6 +127,13 @@ func GetDb(exclude string) ([]byte, error) {
 		return nil, err
 	} else if len(users) > 0 {
 		if err := backupDb.Save(users).Error; err != nil {
+			return nil, err
+		}
+	}
+	if err := db.Model(&model.PasskeyCredential{}).Scan(&passkeys).Error; err != nil {
+		return nil, err
+	} else if len(passkeys) > 0 {
+		if err := backupDb.Save(passkeys).Error; err != nil {
 			return nil, err
 		}
 	}

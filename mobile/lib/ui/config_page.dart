@@ -155,8 +155,9 @@ class _ConfigPageState extends State<ConfigPage> with SingleTickerProviderStateM
   Widget _settingsSection() {
     final groups = <String, List<String>>{
       '面板接口': ['webListen', 'webPort', 'webPath', 'webDomain', 'webCertFile', 'webKeyFile', 'webURI', 'sessionMaxAge', 'trafficAge', 'timeLocation'],
-      '订阅服务': ['subListen', 'subPort', 'subPath', 'subDomain', 'subCertFile', 'subKeyFile', 'subUpdates', 'subEncode', 'subShowInfo', 'subURI'],
+      '订阅服务': ['subListen', 'subPort', 'subPath', 'subDomain', 'subCertFile', 'subKeyFile', 'subUpdates', 'subEncode', 'subShowInfo', 'subInfoUpload', 'subInfoDownload', 'subInfoTotal', 'subInfoExpire', 'subInfoRemaining', 'subURI'],
       '订阅扩展': ['subJsonExt', 'subClashExt'],
+	  '登录与身份': ['oidcEnabled', 'oidcIssuer', 'oidcClientId', 'oidcClientSecret', 'oidcRedirectUrl', 'oidcScopes', 'oidcUsernameClaim', 'oidcAllowedUsers', 'passkeyEnabled', 'passkeyRpId', 'passkeyOrigins'],
     };
     return ListView(
       padding: const EdgeInsets.all(12),

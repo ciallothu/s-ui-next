@@ -3,15 +3,20 @@ module github.com/alireza0/s-ui
 go 1.26.3
 
 require (
+	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-contrib/sessions v1.1.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gofrs/uuid/v5 v5.4.0
+	github.com/go-webauthn/webauthn v0.17.4
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
+	github.com/pquerna/otp v1.5.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sagernet/sing v0.8.10
 	github.com/sagernet/sing-box v1.13.12
 	github.com/shirou/gopsutil/v4 v4.26.4
+	golang.org/x/crypto v0.48.0
+	golang.org/x/oauth2 v0.34.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0
@@ -177,11 +182,9 @@ require (
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/arch v0.22.0 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
-	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/term v0.40.0 // indirect

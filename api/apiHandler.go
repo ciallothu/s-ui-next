@@ -1,8 +1,6 @@
 package api
 
 import (
-	"strings"
-
 	"github.com/alireza0/s-ui/util/common"
 
 	"github.com/gin-gonic/gin"
@@ -22,8 +20,15 @@ func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler) {
 
 func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 	g.Use(func(c *gin.Context) {
-		path := c.Request.URL.Path
-		if !strings.HasSuffix(path, "login") && !strings.HasSuffix(path, "logout") {
+		action := c.Param("postAction")
+		if action == "" {
+			action = c.Param("getAction")
+		}
+		public := map[string]bool{
+			"login": true, "logout": true, "auth-meta": true, "oidc-start": true, "oidc-callback": true,
+			"passkey-login-begin": true, "passkey-login-finish": true,
+		}
+		if !public[action] {
 			checkLogin(c)
 		}
 	})
@@ -38,6 +43,16 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 	switch action {
 	case "login":
 		a.ApiService.Login(c)
+	case "totp-enable":
+		a.ApiService.TOTPEnable(c)
+	case "totp-disable":
+		a.ApiService.TOTPDisable(c)
+	case "passkey-register-finish":
+		a.ApiService.PasskeyRegistrationFinish(c)
+	case "passkey-login-finish":
+		a.ApiService.PasskeyLoginFinish(c)
+	case "passkey-delete":
+		a.ApiService.PasskeyDelete(c)
 	case "changePass":
 		a.ApiService.ChangePass(c)
 		a.apiv2.ReloadTokens()
@@ -70,6 +85,20 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 	switch action {
 	case "logout":
 		a.ApiService.Logout(c)
+	case "auth-meta":
+		a.ApiService.AuthMeta(c)
+	case "oidc-start":
+		a.ApiService.OIDCStart(c)
+	case "oidc-callback":
+		a.ApiService.OIDCCallback(c)
+	case "security":
+		a.ApiService.SecuritySummary(c)
+	case "totp-begin":
+		a.ApiService.TOTPBegin(c)
+	case "passkey-register-begin":
+		a.ApiService.PasskeyRegistrationBegin(c)
+	case "passkey-login-begin":
+		a.ApiService.PasskeyLoginBegin(c)
 	case "load":
 		a.ApiService.LoadData(c)
 	case "inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config":
@@ -90,6 +119,12 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		a.ApiService.GetOnlines(c)
 	case "logs":
 		a.ApiService.GetLogs(c)
+	case "structured-logs":
+		a.ApiService.GetStructuredLogs(c)
+	case "analytics-usage":
+		a.ApiService.GetFilteredUsage(c)
+	case "analytics-stats":
+		a.ApiService.GetFilteredStats(c)
 	case "changes":
 		a.ApiService.CheckChanges(c)
 	case "keypairs":

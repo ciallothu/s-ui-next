@@ -114,12 +114,14 @@ class ApiClient {
     required ConnectionProfile profile,
     required String username,
     required String password,
+    String code = '',
     int expiryDays = 30,
   }) async {
     final client = ApiClient(profile.copyWith(token: ''));
     final result = await client.post('auth/login', data: {
       'username': username,
       'password': password,
+	  if (code.trim().isNotEmpty) 'code': code.trim(),
       'expiryDays': expiryDays,
     });
     return Map<String, dynamic>.from(result as Map);

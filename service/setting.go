@@ -42,35 +42,50 @@ var defaultConfig = `{
 }`
 
 var defaultValueMap = map[string]string{
-	"webListen":     "",
-	"webDomain":     "",
-	"webPort":       "2095",
-	"secret":        common.Random(32),
-	"webCertFile":   "",
-	"webKeyFile":    "",
-	"webPath":       "/app/",
-	"webURI":        "",
-	"sessionMaxAge": "0",
-	"trafficAge":    "30",
-	"timeLocation":  "Asia/Tehran",
-	"subListen":     "",
-	"subPort":       "2096",
-	"subPath":       "/sub/",
-	"subDomain":     "",
-	"subCertFile":   "",
-	"subKeyFile":    "",
-	"subUpdates":    "12",
-	"subEncode":     "true",
-	"subShowInfo":   "false",
-	"subURI":        "",
-	"subJsonExt":    "",
-	"subClashExt":   "",
-	"config":        defaultConfig,
-	"version":       config.GetVersion(),
+	"webListen":         "",
+	"webDomain":         "",
+	"webPort":           "2095",
+	"secret":            common.Random(32),
+	"webCertFile":       "",
+	"webKeyFile":        "",
+	"webPath":           "/app/",
+	"webURI":            "",
+	"sessionMaxAge":     "0",
+	"trafficAge":        "30",
+	"timeLocation":      "Asia/Tehran",
+	"subListen":         "",
+	"subPort":           "2096",
+	"subPath":           "/sub/",
+	"subDomain":         "",
+	"subCertFile":       "",
+	"subKeyFile":        "",
+	"subUpdates":        "12",
+	"subEncode":         "true",
+	"subShowInfo":       "false",
+	"subInfoUpload":     "true",
+	"subInfoDownload":   "true",
+	"subInfoTotal":      "true",
+	"subInfoExpire":     "true",
+	"subInfoRemaining":  "true",
+	"oidcEnabled":       "false",
+	"oidcIssuer":        "",
+	"oidcClientId":      "",
+	"oidcClientSecret":  "",
+	"oidcRedirectUrl":   "",
+	"oidcScopes":        "openid profile email",
+	"oidcUsernameClaim": "preferred_username",
+	"oidcAllowedUsers":  "",
+	"passkeyEnabled":    "false",
+	"passkeyRpId":       "",
+	"passkeyOrigins":    "",
+	"subURI":            "",
+	"subJsonExt":        "",
+	"subClashExt":       "",
+	"config":            defaultConfig,
+	"version":           config.GetVersion(),
 }
 
-type SettingService struct {
-}
+type SettingService struct{}
 
 func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 	db := database.GetDB()
@@ -99,6 +114,9 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 	delete(allSetting, "secret")
 	delete(allSetting, "config")
 	delete(allSetting, "version")
+	if allSetting["oidcClientSecret"] != "" {
+		allSetting["oidcClientSecret"] = "********"
+	}
 
 	return &allSetting, nil
 }
@@ -175,6 +193,7 @@ func (s *SettingService) getInt(key string) (int, error) {
 func (s *SettingService) setInt(key string, value int) error {
 	return s.setString(key, strconv.Itoa(value))
 }
+
 func (s *SettingService) GetListen() (string, error) {
 	return s.getString("webListen")
 }
@@ -319,6 +338,30 @@ func (s *SettingService) GetSubShowInfo() (bool, error) {
 	return s.getBool("subShowInfo")
 }
 
+type SubInfoOptions struct {
+	Upload    bool
+	Download  bool
+	Total     bool
+	Expire    bool
+	Remaining bool
+}
+
+func (s *SettingService) GetSubInfoOptions() SubInfoOptions {
+	get := func(key string) bool {
+		value, err := s.getBool(key)
+		return err == nil && value
+	}
+	return SubInfoOptions{
+		Upload: get("subInfoUpload"), Download: get("subInfoDownload"), Total: get("subInfoTotal"),
+		Expire: get("subInfoExpire"), Remaining: get("subInfoRemaining"),
+	}
+}
+
+func (s *SettingService) GetOIDCEnabled() (bool, error) { return s.getBool("oidcEnabled") }
+
+func (s *SettingService) GetPasskeyEnabled() (bool, error)          { return s.getBool("passkeyEnabled") }
+func (s *SettingService) GetAuthSetting(key string) (string, error) { return s.getString(key) }
+
 func (s *SettingService) GetSubURI() (string, error) {
 	return s.getString("subURI")
 }
@@ -370,6 +413,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		return err
 	}
 	for key, obj := range settings {
+		if key == "oidcClientSecret" && (obj == "" || obj == "********") {
+			continue
+		}
 		// Secure file existence check
 		if obj != "" && (key == "webCertFile" ||
 			key == "webKeyFile" ||

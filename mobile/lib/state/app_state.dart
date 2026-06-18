@@ -46,10 +46,11 @@ class AppState extends ChangeNotifier {
     await _connect(next);
   }
 
-  Future<void> connectWithCredentials(
+  Future<bool> connectWithCredentials(
     ConnectionProfile next,
     String username,
     String password,
+    {String code = ''}
   ) async {
     busy = true;
     error = null;
@@ -59,10 +60,15 @@ class AppState extends ChangeNotifier {
         profile: next,
         username: username,
         password: password,
+        code: code,
       );
+	  if (login['requires2FA'] == true) {
+		return true;
+	  }
       final token = login['token']?.toString() ?? '';
       if (token.isEmpty) throw const ApiException('面板没有返回 API Token');
       await _connect(next.copyWith(token: token), manageBusy: false);
+	  return false;
     } catch (exception) {
       error = exception.toString();
       rethrow;

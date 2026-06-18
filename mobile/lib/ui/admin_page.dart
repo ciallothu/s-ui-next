@@ -16,6 +16,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
   List<dynamic> users = [];
   List<dynamic> tokens = [];
   List<dynamic> changes = [];
+  Map<String, dynamic> security = {};
   final search = TextEditingController();
   final actor = TextEditingController();
   bool loading = true;
@@ -24,7 +25,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    tabs = TabController(length: 3, vsync: this)..addListener(() {
+    tabs = TabController(length: 4, vsync: this)..addListener(() {
         if (!tabs.indexIsChanging) load();
       });
     load();
@@ -51,9 +52,12 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
       } else if (tabs.index == 1) {
         final value = await api.get('tokens');
         if (mounted) setState(() => tokens = List<dynamic>.from(value as List? ?? const []));
-      } else {
+      } else if (tabs.index == 2) {
         final value = Map<String, dynamic>.from(await api.get('changes', query: {'user': actor.text.trim(), 'search': search.text.trim(), 'limit': 500}) as Map);
         if (mounted) setState(() => changes = List<dynamic>.from(value['items'] as List? ?? const []));
+	  } else {
+		final value = await api.get('auth/security');
+		if (mounted) setState(() => security = Map<String, dynamic>.from(value as Map? ?? const {}));
       }
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
@@ -152,6 +156,84 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
     }
   }
 
+  Future<void> enableTotp() async {
+	try {
+	  final setup = Map<String, dynamic>.from(await context.read<AppState>().api!.post('auth/totp/begin') as Map);
+	  if (!mounted) return;
+	  final code = TextEditingController();
+	  final confirmed = await showDialog<bool>(
+		context: context,
+		builder: (dialogContext) => AlertDialog(
+		  title: const Text('启用两步验证'),
+		  content: SizedBox(
+			width: 520,
+			child: Column(mainAxisSize: MainAxisSize.min, children: [
+			  const Text('在验证器中导入下面的 URI 或密钥，然后输入当前验证码。'),
+			  const SizedBox(height: 10),
+			  SelectableText(setup['uri']?.toString() ?? setup['secret']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace')),
+			  const SizedBox(height: 12),
+			  TextField(controller: code, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '6 位验证码')),
+			]),
+		  ),
+		  actions: [
+			TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+			FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('启用')),
+		  ],
+		),
+	  );
+	  if (confirmed != true || !mounted) {
+		code.dispose();
+		return;
+	  }
+	  final result = Map<String, dynamic>.from(await context.read<AppState>().api!.post('auth/totp/enable', data: {'code': code.text.trim()}) as Map);
+	  code.dispose();
+	  if (!mounted) return;
+	  await showDialog<void>(context: context, builder: (resultContext) => AlertDialog(
+		title: const Text('请保存恢复码'),
+		content: SelectableText((result['recoveryCodes'] as List? ?? const []).join('\n'), style: const TextStyle(fontFamily: 'monospace')),
+		actions: [FilledButton(onPressed: () => Navigator.pop(resultContext), child: const Text('我已保存'))],
+	  ));
+	  await load();
+	} catch (exception) {
+	  if (mounted) showMessage(context, exception.toString(), error: true);
+	}
+  }
+
+  Future<void> disableTotp() async {
+	final password = TextEditingController();
+	final code = TextEditingController();
+	final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+	  title: const Text('关闭两步验证'),
+	  content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
+		TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: '当前密码')),
+		const SizedBox(height: 10),
+		TextField(controller: code, decoration: const InputDecoration(labelText: '验证码或恢复码')),
+	  ])),
+	  actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('关闭'))],
+	));
+	if (confirmed == true && mounted) {
+	  try {
+		await context.read<AppState>().api!.post('auth/totp/disable', data: {'password': password.text, 'code': code.text.trim()});
+		await load();
+	  } catch (exception) {
+		if (mounted) showMessage(context, exception.toString(), error: true);
+	  }
+	}
+	password.dispose();
+	code.dispose();
+  }
+
+  Future<void> deletePasskey(Map<String, dynamic> passkey) async {
+	if (!await confirm(context, title: '删除通行密钥', message: '删除后该设备将不能再用于免密码登录。', action: '删除')) return;
+	if (!mounted) return;
+	try {
+	  await context.read<AppState>().api!.delete('auth/passkeys/${passkey['id']}');
+	  await load();
+	} catch (exception) {
+	  if (mounted) showMessage(context, exception.toString(), error: true);
+	}
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -161,7 +243,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
           subtitle: '账号、API Token 与变更审计',
           actions: [if (tabs.index == 1) IconButton.filled(onPressed: addToken, icon: const Icon(Icons.add))],
         ),
-        TabBar(controller: tabs, tabs: const [Tab(text: '管理员'), Tab(text: 'API Token'), Tab(text: '变更记录')]),
+        TabBar(controller: tabs, isScrollable: true, tabs: const [Tab(text: '管理员'), Tab(text: 'API Token'), Tab(text: '变更记录'), Tab(text: '登录安全')]),
         if (tabs.index == 2)
           FilterCard(
             child: Row(children: [Expanded(child: TextField(controller: actor, onSubmitted: (_) => load(), decoration: const InputDecoration(labelText: '执行者'))), const SizedBox(width: 8), Expanded(child: TextField(controller: search, onSubmitted: (_) => load(), decoration: const InputDecoration(labelText: '搜索', prefixIcon: Icon(Icons.search)))), const SizedBox(width: 8), IconButton.filledTonal(onPressed: load, icon: const Icon(Icons.refresh))]),
@@ -170,7 +252,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         Expanded(
           child: error != null
               ? EmptyState(label: error!, icon: Icons.error_outline)
-              : TabBarView(controller: tabs, children: [_users(), _tokens(), _changes()]),
+              : TabBarView(controller: tabs, children: [_users(), _tokens(), _changes(), _security()]),
         ),
       ],
     );
@@ -235,6 +317,39 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
           children: [Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: Align(alignment: Alignment.centerLeft, child: SelectableText(item['obj']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace'))))],
         ),
       );
+
+  Widget _security() {
+	final methods = Map<String, dynamic>.from(security['methods'] as Map? ?? const {});
+	final passkeys = List<dynamic>.from(security['passkeys'] as List? ?? const []);
+	final totpEnabled = security['totpEnabled'] == true;
+	return RefreshIndicator(
+	  onRefresh: load,
+	  child: ListView(
+		physics: const AlwaysScrollableScrollPhysics(),
+		padding: const EdgeInsets.all(12),
+		children: [
+		  Card(child: SwitchListTile(
+			secondary: const Icon(Icons.phonelink_lock_outlined),
+			title: const Text('TOTP 两步验证'),
+			subtitle: Text(totpEnabled ? '已启用；登录需要验证码或恢复码' : '未启用'),
+			value: totpEnabled,
+			onChanged: (_) => totpEnabled ? disableTotp() : enableTotp(),
+		  )),
+		  Card(child: Column(children: [
+			ListTile(leading: const Icon(Icons.passkey_outlined), title: const Text('通行密钥'), subtitle: Text(methods['passkey'] == true ? '服务端已启用；请在 Web 页面注册新通行密钥' : '服务端尚未启用')),
+			for (final raw in passkeys)
+			  ListTile(
+				leading: const Icon(Icons.key_outlined),
+				title: Text((raw as Map)['name']?.toString() ?? 'Passkey'),
+				subtitle: Text('创建 ${formatTimestamp(raw['createdAt'])}'),
+				trailing: IconButton(onPressed: () => deletePasskey(Map<String, dynamic>.from(raw)), icon: const Icon(Icons.delete_outline)),
+			  ),
+		  ])),
+		  Card(child: ListTile(leading: const Icon(Icons.badge_outlined), title: const Text('OIDC 单点登录'), subtitle: Text(methods['oidc'] == true ? '已启用，可从 Web 登录页使用' : '未启用'))),
+		],
+	  ),
+	);
+  }
 
   String _expiry(dynamic value) {
     final timestamp = int.tryParse(value?.toString() ?? '') ?? 0;
