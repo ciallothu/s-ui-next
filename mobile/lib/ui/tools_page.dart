@@ -35,7 +35,7 @@ class _ToolsPageState extends State<ToolsPage> {
     final directory = await getTemporaryDirectory();
     final file = File('${directory.path}/$filename');
     await file.writeAsBytes(bytes, flush: true);
-    await Share.shareXFiles([XFile(file.path)], subject: filename);
+    await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: filename));
   }
 
   Future<void> backupDatabase() async {
