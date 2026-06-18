@@ -336,7 +336,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
 			onChanged: (_) => totpEnabled ? disableTotp() : enableTotp(),
 		  )),
 		  Card(child: Column(children: [
-			ListTile(leading: const Icon(Icons.passkey_outlined), title: const Text('通行密钥'), subtitle: Text(methods['passkey'] == true ? '服务端已启用；请在 Web 页面注册新通行密钥' : '服务端尚未启用')),
+			ListTile(leading: const Icon(Icons.key_outlined), title: const Text('通行密钥'), subtitle: Text(methods['passkey'] == true ? '服务端已启用；请在 Web 页面注册新通行密钥' : '服务端尚未启用')),
 			for (final raw in passkeys)
 			  ListTile(
 				leading: const Icon(Icons.key_outlined),
