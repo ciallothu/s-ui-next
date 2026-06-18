@@ -140,6 +140,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$RUNNER_TEMP/sui-mobile/ios/Runner/Info.plist" || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName S-UI" "$RUNNER_TEMP/sui-mobile/ios/Runner/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleName S-UI" "$RUNNER_TEMP/sui-mobile/ios/Runner/Info.plist"
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/g' "$RUNNER_TEMP/sui-mobile/ios/Runner.xcodeproj/project.pbxproj"
+          sed -i '' 's/<string>13.0<\/string>/<string>14.0<\/string>/' "$RUNNER_TEMP/sui-mobile/ios/Flutter/AppFrameworkInfo.plist"
 
       - name: Resolve dependencies and icons
         working-directory: ${{ runner.temp }}/sui-mobile
