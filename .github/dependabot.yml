@@ -5,7 +5,6 @@ updates:
     schedule:
       interval: "cron"
       cronjob: "*/5 * * * *"
-    open-pull-requests-limit: 0
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
