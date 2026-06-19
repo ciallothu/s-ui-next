@@ -159,9 +159,9 @@ class _ResourcePageState extends State<ResourcePage> {
     try {
       final result = await context.read<AppState>().getResource('clients', id: summary['id']?.toString());
       final list = result is List ? result : const [];
+      if (!mounted) return;
       if (list.isEmpty) throw FormatException(context.tr('resource.userNotFound'));
       final client = Map<String, dynamic>.from(list.first as Map);
-      if (!mounted) return;
       final state = context.read<AppState>();
       final panel = state.bootstrap['panel'];
       final subBase = panel is Map ? panel['subURI']?.toString() ?? '' : '';

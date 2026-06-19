@@ -1353,7 +1353,6 @@ const _la = <String, String>{
 };
 
 const _vi = <String, String>{
-  ..._en,
   'common.cancel': 'Hủy', 'common.confirm': 'Xác nhận', 'common.save': 'Lưu', 'common.close': 'Đóng',
   'common.delete': 'Xóa', 'common.refresh': 'Làm mới', 'common.refreshed': 'Đã làm mới', 'common.search': 'Tìm kiếm',
   'common.from': 'Từ', 'common.to': 'Đến', 'common.all': 'Tất cả', 'common.none': 'Không có',
@@ -1466,7 +1465,6 @@ const _vi = <String, String>{
 };
 
 const _ru = <String, String>{
-  ..._en,
   'common.cancel': 'Отмена', 'common.confirm': 'Подтвердить', 'common.save': 'Сохранить', 'common.close': 'Закрыть',
   'common.delete': 'Удалить', 'common.refresh': 'Обновить', 'common.refreshed': 'Обновлено', 'common.search': 'Поиск',
   'common.from': 'С', 'common.to': 'По', 'common.all': 'Все', 'common.none': 'Нет',
@@ -1579,7 +1577,6 @@ const _ru = <String, String>{
 };
 
 const _fa = <String, String>{
-  ..._en,
   'common.cancel': 'لغو', 'common.confirm': 'تأیید', 'common.save': 'ذخیره', 'common.close': 'بستن',
   'common.delete': 'حذف', 'common.refresh': 'تازه‌سازی', 'common.refreshed': 'تازه شد', 'common.search': 'جستجو',
   'common.from': 'از', 'common.to': 'تا', 'common.all': 'همه', 'common.none': 'هیچ‌کدام',
@@ -1691,16 +1688,16 @@ const _fa = <String, String>{
   'error.badCertificate': 'گواهی TLS پنل نامعتبر است', 'error.receiveTimeout': 'زمان پاسخ پنل تمام شد',
 };
 
-const _messages = <String, Map<String, String>>{
+final _messages = <String, Map<String, String>>{
   'en': _en,
   'zhHans': {..._en, ..._zhHans},
   'zhHant': {..._en, ..._zhHans, 'common.language': '語言'},
   'ja': {..._en, ..._ja},
   'fr': {..._en, ..._fr},
   'la': {..._en, ..._la},
-  'fa': _fa,
-  'vi': _vi,
-  'ru': _ru,
+  'fa': {..._en, ..._fa},
+  'vi': {..._en, ..._vi},
+  'ru': {..._en, ..._ru},
 };
 
 const _fieldLabelsEn = <String, String>{

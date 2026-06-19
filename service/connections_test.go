@@ -8,32 +8,32 @@ import (
 
 func TestParseConnectionLogExamples(t *testing.T) {
 	tests := []struct {
-		message      string
-		resource     string
-		protocol     string
-		tag          string
-		user         string
-		remote       string
-		destination  string
-		source       string
+		message     string
+		resource    string
+		protocol    string
+		tag         string
+		user        string
+		remote      string
+		destination string
+		source      string
 	}{
 		{
-			message: "outbound/direct[direct]outbound connection to 149.154.175.211:443",
+			message:  "outbound/direct[direct]outbound connection to 149.154.175.211:443",
 			resource: "outbound", protocol: "direct", tag: "direct",
 			remote: "149.154.175.211:443", destination: "149.154.175.211:443",
 		},
 		{
-			message: "inbound/vless[vless-443][刘晓辰] inbound connection to 149.154.175.211:443",
+			message:  "inbound/vless[vless-443][刘晓辰] inbound connection to 149.154.175.211:443",
 			resource: "inbound", protocol: "vless", tag: "vless-443", user: "刘晓辰",
 			remote: "149.154.175.211:443", destination: "149.154.175.211:443",
 		},
 		{
-			message: "inbound/vless[vless-443]inbound connection from 166.111.232.125:61748",
+			message:  "inbound/vless[vless-443]inbound connection from 166.111.232.125:61748",
 			resource: "inbound", protocol: "vless", tag: "vless-443",
 			remote: "166.111.232.125:61748", source: "166.111.232.125:61748",
 		},
 		{
-			message: "endpoint/wireguard[office] endpoint connection to 10.0.0.2:443",
+			message:  "endpoint/wireguard[office] endpoint connection to 10.0.0.2:443",
 			resource: "endpoint", protocol: "wireguard", tag: "office",
 			remote: "10.0.0.2:443", destination: "10.0.0.2:443",
 		},

@@ -44,13 +44,13 @@ type ConnectionSummary struct {
 }
 
 type ConnectionQueryResult struct {
-	Items    []ConnectionEntry              `json:"items"`
-	Total    int                            `json:"total"`
-	Offset   int                            `json:"offset"`
-	Limit    int                            `json:"limit"`
-	Summary  map[string][]ConnectionSummary `json:"summary"`
-	Parsed   int                            `json:"parsed"`
-	Scanned  int                            `json:"scanned"`
+	Items   []ConnectionEntry              `json:"items"`
+	Total   int                            `json:"total"`
+	Offset  int                            `json:"offset"`
+	Limit   int                            `json:"limit"`
+	Summary map[string][]ConnectionSummary `json:"summary"`
+	Parsed  int                            `json:"parsed"`
+	Scanned int                            `json:"scanned"`
 }
 
 var (
