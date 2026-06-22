@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sui_mobile/ui/widgets.dart';
 
 void main() {
-  testWidgets('anchored selector is aligned, five rows tall and scrolls to the last option', (tester) async {
+  testWidgets('anchored selector hugs the field, shows five rows and scrolls to the last option', (tester) async {
     var selected = 'one';
     await tester.pumpWidget(
       MaterialApp(
@@ -40,7 +40,7 @@ void main() {
     final menu = tester.getRect(find.byKey(const ValueKey('anchored-select-menu')));
     expect(menu.left, closeTo(target.left, 0.1));
     expect(menu.width, closeTo(target.width, 0.1));
-    expect(menu.top, closeTo(target.bottom + 4, 0.1));
+    expect(menu.top, closeTo(target.bottom - 2, 0.1));
     expect(menu.height, closeTo(kMinInteractiveDimension * 5, 0.1));
 
     await tester.drag(find.byKey(const ValueKey('anchored-select-menu')), const Offset(0, -240));
