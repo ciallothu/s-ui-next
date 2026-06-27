@@ -22,20 +22,20 @@ type ConnectionFilter struct {
 }
 
 type ConnectionEntry struct {
-	Timestamp       int64              `json:"timestamp"`
-	Time            string             `json:"time"`
-	Resource        string             `json:"resource"`
-	Protocol        string             `json:"protocol"`
-	Tag             string             `json:"tag"`
-	User            string             `json:"user,omitempty"`
-	Event           string             `json:"event"`
-	Remote          string             `json:"remote,omitempty"`
+	Timestamp       int64             `json:"timestamp"`
+	Time            string            `json:"time"`
+	Resource        string            `json:"resource"`
+	Protocol        string            `json:"protocol"`
+	Tag             string            `json:"tag"`
+	User            string            `json:"user,omitempty"`
+	Event           string            `json:"event"`
+	Remote          string            `json:"remote,omitempty"`
 	RemoteInfo      *ConnectionIPInfo `json:"remoteInfo,omitempty"`
-	Destination     string             `json:"destination,omitempty"`
+	Destination     string            `json:"destination,omitempty"`
 	DestinationInfo *ConnectionIPInfo `json:"destinationInfo,omitempty"`
-	Source          string             `json:"source,omitempty"`
+	Source          string            `json:"source,omitempty"`
 	SourceInfo      *ConnectionIPInfo `json:"sourceInfo,omitempty"`
-	Message         string             `json:"message"`
+	Message         string            `json:"message"`
 }
 
 type ConnectionIPInfo struct {
