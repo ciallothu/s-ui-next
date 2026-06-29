@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/gob"
+	"net/http"
+	"strings"
 
 	"github.com/alireza0/s-ui/database/model"
 
@@ -19,8 +21,10 @@ func init() {
 
 func SetLoginUser(c *gin.Context, userName string, maxAge int) error {
 	options := sessions.Options{
-		Path:   "/",
-		Secure: false,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsHTTPS(c),
 	}
 	if maxAge > 0 {
 		options.MaxAge = maxAge * 60
@@ -36,7 +40,10 @@ func SetLoginUser(c *gin.Context, userName string, maxAge int) error {
 func SetMaxAge(c *gin.Context) error {
 	s := sessions.Default(c)
 	s.Options(sessions.Options{
-		Path: "/",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsHTTPS(c),
 	})
 	return s.Save()
 }
@@ -62,8 +69,32 @@ func ClearSession(c *gin.Context) {
 	s := sessions.Default(c)
 	s.Clear()
 	s.Options(sessions.Options{
-		Path:   "/",
-		MaxAge: -1,
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsHTTPS(c),
 	})
 	s.Save()
+}
+
+func requestIsHTTPS(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	if c.Request.TLS != nil {
+		return true
+	}
+	proto := strings.ToLower(strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0]))
+	if proto == "https" {
+		return true
+	}
+	forwarded := c.GetHeader("Forwarded")
+	for _, part := range strings.Split(strings.Split(forwarded, ",")[0], ";") {
+		pieces := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(pieces) == 2 && strings.EqualFold(strings.TrimSpace(pieces[0]), "proto") {
+			return strings.EqualFold(strings.Trim(strings.TrimSpace(pieces[1]), `"`), "https")
+		}
+	}
+	return false
 }

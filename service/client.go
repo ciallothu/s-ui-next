@@ -26,6 +26,9 @@ func (s *ClientService) Get(id string) (*[]model.Client, error) {
 
 func (s *ClientService) getById(id string) (*[]model.Client, error) {
 	db := database.GetDB()
+	if err := s.EnsureClientSubIds(db); err != nil {
+		return nil, err
+	}
 	var client []model.Client
 	err := db.Model(model.Client{}).Where("id in ?", strings.Split(id, ",")).Scan(&client).Error
 	if err != nil {
@@ -37,14 +40,71 @@ func (s *ClientService) getById(id string) (*[]model.Client, error) {
 
 func (s *ClientService) GetAll() (*[]model.Client, error) {
 	db := database.GetDB()
+	if err := s.EnsureClientSubIds(db); err != nil {
+		return nil, err
+	}
 	var clients []model.Client
 	err := db.Model(model.Client{}).
-		Select("`id`, `enable`, `name`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`").
+		Select("`id`, `enable`, `name`, `sub_id`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`").
 		Scan(&clients).Error
 	if err != nil {
 		return nil, err
 	}
 	return &clients, nil
+}
+
+func (s *ClientService) EnsureClientSubIds(db *gorm.DB) error {
+	var clients []model.Client
+	if err := db.Model(model.Client{}).Select("id, sub_id").Where("sub_id = '' OR sub_id IS NULL").Find(&clients).Error; err != nil {
+		return err
+	}
+	for _, client := range clients {
+		subId, err := s.newClientSubId(db)
+		if err != nil {
+			return err
+		}
+		if err := db.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_id", subId).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *ClientService) ensureClientSubId(tx *gorm.DB, client *model.Client) error {
+	client.SubId = strings.TrimSpace(client.SubId)
+	if client.SubId != "" {
+		return nil
+	}
+	if client.Id > 0 {
+		var existing string
+		if err := tx.Model(model.Client{}).Select("sub_id").Where("id = ?", client.Id).Scan(&existing).Error; err != nil {
+			return err
+		}
+		if strings.TrimSpace(existing) != "" {
+			client.SubId = strings.TrimSpace(existing)
+			return nil
+		}
+	}
+	subId, err := s.newClientSubId(tx)
+	if err != nil {
+		return err
+	}
+	client.SubId = subId
+	return nil
+}
+
+func (s *ClientService) newClientSubId(tx *gorm.DB) (string, error) {
+	for i := 0; i < 10; i++ {
+		subId := common.Random(24)
+		var count int64
+		if err := tx.Model(model.Client{}).Where("sub_id = ?", subId).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return subId, nil
+		}
+	}
+	return "", common.NewError("unable to generate a unique subscription id")
 }
 
 func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, hostname string) ([]uint, error) {
@@ -55,6 +115,10 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 	case "new", "edit":
 		var client model.Client
 		err = json.Unmarshal(data, &client)
+		if err != nil {
+			return nil, err
+		}
+		err = s.ensureClientSubId(tx, &client)
 		if err != nil {
 			return nil, err
 		}
@@ -84,6 +148,15 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
+		if len(clients) == 0 {
+			return nil, common.NewError("bulk client list is empty")
+		}
+		for _, client := range clients {
+			err = s.ensureClientSubId(tx, client)
+			if err != nil {
+				return nil, err
+			}
+		}
 		err = json.Unmarshal(clients[0].Inbounds, &inboundIds)
 		if err != nil {
 			return nil, err
@@ -102,7 +175,14 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
+		if len(clients) == 0 {
+			return nil, common.NewError("bulk client list is empty")
+		}
 		for _, client := range clients {
+			err = s.ensureClientSubId(tx, client)
+			if err != nil {
+				return nil, err
+			}
 			changedInboundIds, err := s.findInboundsChanges(tx, client, true)
 			if err != nil {
 				return nil, err

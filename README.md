@@ -13,6 +13,7 @@ This repository extends [alireza0/s-ui](https://github.com/alireza0/s-ui) while 
 - User/date/search filters for usage, statistics, logs, audit records, and parsed connection details by user, inbound, outbound, endpoint, and destination.
 - Searchable multi-level system logs and administrator change history in both Web and App.
 - Granular subscription user-info controls for upload, download, quota, expiry, and node-name remaining quota.
+- Per-client random subscription IDs, so public subscription URLs no longer expose or accept guessable usernames.
 - OIDC single sign-on, TOTP two-factor authentication with one-time recovery codes, and WebAuthn passkeys.
 - bcrypt password storage with automatic migration from legacy plaintext records after successful login.
 - Web/App navigation parity: users, resources, TLS, core configuration, analytics, logs, administration, settings, and tools.

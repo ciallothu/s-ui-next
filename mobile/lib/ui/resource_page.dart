@@ -172,7 +172,8 @@ class _ResourcePageState extends State<ResourcePage> {
       final subBase = panel is Map ? panel['subURI']?.toString() ?? '' : '';
       final values = <_QrValue>[];
       if (subBase.isNotEmpty) {
-        final subscription = '$subBase${client['name']}';
+        final subId = client['subId']?.toString().trim().isNotEmpty == true ? client['subId'].toString() : client['name'].toString();
+        final subscription = '$subBase${Uri.encodeComponent(subId)}';
         values.addAll([
           _QrValue(context.tr('resource.subscription'), subscription),
           _QrValue(context.tr('resource.jsonSubscription'), '$subscription?format=json'),

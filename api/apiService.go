@@ -409,8 +409,9 @@ func (a *ApiService) AddToken(c *gin.Context) {
 }
 
 func (a *ApiService) DeleteToken(c *gin.Context) {
+	loginUser := GetLoginUser(c)
 	tokenId := c.Request.FormValue("id")
-	err := a.UserService.DeleteToken(tokenId)
+	err := a.UserService.DeleteUserToken(loginUser, tokenId)
 	jsonMsg(c, "", err)
 }
 

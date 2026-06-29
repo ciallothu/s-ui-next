@@ -128,7 +128,7 @@ class _ToolsPageState extends State<ToolsPage> {
           title: Text(context.t('tools.keypair')),
           content: SizedBox(
             width: 480,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [AnchoredSelect<String>(value: type, label: context.t('tools.keyType'), options: [for (final value in const ['reality', 'wireguard', 'tls', 'ech']) SelectOption(value, value)], onChanged: (value) => setDialogState(() => type = value)), const SizedBox(height: 10), TextField(controller: options, decoration: InputDecoration(labelText: context.t('tools.optionsServer')))]),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [AnchoredSelect<String>(value: type, label: context.t('tools.keyType'), options: [for (final value in const ['reality', 'wireguard', 'wireguard-psk', 'tls', 'ech']) SelectOption(value, value)], onChanged: (value) => setDialogState(() => type = value)), const SizedBox(height: 10), TextField(controller: options, decoration: InputDecoration(labelText: context.t('tools.optionsServer')))]),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(context.t('common.cancel'))),

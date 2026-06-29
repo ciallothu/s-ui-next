@@ -98,8 +98,11 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 
 func (j *JsonService) getData(subId string) (*model.Client, []*model.Inbound, error) {
 	db := database.GetDB()
+	if err := (service.ClientService{}).EnsureClientSubIds(db); err != nil {
+		return nil, nil, err
+	}
 	client := &model.Client{}
-	err := db.Model(model.Client{}).Where("enable = true and name = ?", subId).First(client).Error
+	err := db.Model(model.Client{}).Where("enable = true and sub_id = ?", strings.TrimSpace(subId)).First(client).Error
 	if err != nil {
 		return nil, nil, err
 	}
