@@ -46,7 +46,8 @@ func (s *SubService) GetSubs(subId string) (*string, []string, error) {
 
 func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	db := database.GetDB()
-	if err := (service.ClientService{}).EnsureClientSubIds(db); err != nil {
+	clientService := service.ClientService{}
+	if err := clientService.EnsureClientSubIds(db); err != nil {
 		return nil, err
 	}
 	client := &model.Client{}
