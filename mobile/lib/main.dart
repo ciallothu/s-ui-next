@@ -26,7 +26,7 @@ class SuiMobile extends StatelessWidget {
       child: Consumer<AppState>(
         builder: (context, appState, _) => MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'S-UI',
+          title: 'S-UI Next',
           locale: AppLocalizations.localeOf(appState.localeCode),
           supportedLocales: AppLocalizations.supportedLocales,
           localizationsDelegates: const [

@@ -1,9 +1,11 @@
-# PowerShell script for building S-UI on Windows
+# PowerShell script for building S-UI Next on Windows
 param(
     [string]$Architecture = "amd64",
     [switch]$NoCGO,
     [switch]$Help
 )
+
+Set-Location (Resolve-Path (Join-Path $PSScriptRoot ".."))
 
 if ($Help) {
     Write-Host "Usage: .\build-windows.ps1 [-Architecture <arch>] [-NoCGO] [-Help]"
@@ -15,7 +17,7 @@ if ($Help) {
     exit 0
 }
 
-Write-Host "Building S-UI for Windows ($Architecture)..." -ForegroundColor Green
+Write-Host "Building S-UI Next for Windows ($Architecture)..." -ForegroundColor Green
 
 # Check if Go is installed
 try {

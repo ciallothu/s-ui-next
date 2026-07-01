@@ -1,4 +1,4 @@
-# S-UI Mobile API v3
+# S-UI Next Mobile API v3
 
 API 根路径跟随面板 Web Path。例如面板为 `https://example.com/app/`，API 根路径为 `https://example.com/app/apiv3/`。
 

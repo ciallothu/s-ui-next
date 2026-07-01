@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/util/common"
 )
 
 func GetExternalLink(url string) string {

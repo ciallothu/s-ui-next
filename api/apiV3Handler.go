@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/service"
-	"github.com/alireza0/s-ui/util"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/config"
+	"github.com/ciallothu/s-ui-next/database"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/service"
+	"github.com/ciallothu/s-ui-next/util"
+	"github.com/ciallothu/s-ui-next/util/common"
 
 	"github.com/gin-gonic/gin"
 )
@@ -179,7 +179,7 @@ func (a *APIv3Handler) login(c *gin.Context) {
 	if body.ExpiryDays < 0 {
 		body.ExpiryDays = 30
 	}
-	token, err := a.UserService.AddToken(username, body.ExpiryDays, "S-UI Mobile")
+	token, err := a.UserService.AddToken(username, body.ExpiryDays, "S-UI Next Mobile")
 	if err != nil {
 		v3Error(c, http.StatusInternalServerError, err)
 		return
@@ -219,7 +219,7 @@ func (a *APIv3Handler) securitySummary(c *gin.Context) {
 }
 
 func (a *APIv3Handler) totpBegin(c *gin.Context) {
-	value, err := a.UserService.BeginTOTP(apiUsername(c), "S-UI")
+	value, err := a.UserService.BeginTOTP(apiUsername(c), "S-UI Next")
 	if err != nil {
 		v3Error(c, http.StatusBadRequest, err)
 		return
@@ -621,7 +621,7 @@ func (a *APIv3Handler) downloadDatabase(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db")
+	c.Header("Content-Disposition", "attachment; filename=s-ui-next_"+time.Now().Format("20060102-150405")+".db")
 	c.Data(http.StatusOK, "application/octet-stream", value)
 }
 
@@ -665,7 +665,7 @@ func (a *APIv3Handler) action(c *gin.Context) {
 			v3Error(c, http.StatusInternalServerError, err)
 			return
 		}
-		logger.Audit(username, "restarted S-UI panel")
+		logger.Audit(username, "restarted S-UI Next panel")
 	default:
 		v3Error(c, http.StatusNotFound, common.NewError("unknown action"))
 		return

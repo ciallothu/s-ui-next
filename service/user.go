@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/database"
+	"github.com/ciallothu/s-ui-next/database/model"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/util/common"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -164,7 +164,7 @@ func (s *UserService) ChangePass(id string, oldPass string, newUser string, newP
 
 func (s *UserService) BeginTOTP(username, issuer string) (map[string]string, error) {
 	if issuer == "" {
-		issuer = "S-UI"
+		issuer = "S-UI Next"
 	}
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: issuer, AccountName: username})
 	if err != nil {

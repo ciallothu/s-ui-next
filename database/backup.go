@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alireza0/s-ui/cmd/migration"
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/cmd/migration"
+	"github.com/ciallothu/s-ui-next/config"
+	"github.com/ciallothu/s-ui-next/database/model"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

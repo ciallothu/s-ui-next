@@ -1,11 +1,11 @@
-# S-UI
+# S-UI Next
 **An Advanced Web Panel • Built on SagerNet/Sing-Box**
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 ## Highlights in this fork
 
-This repository extends [alireza0/s-ui](https://github.com/alireza0/s-ui) while retaining its sing-box management model. The additions maintained in this fork are listed first so the differences from upstream are immediately visible.
+S-UI Next is a downstream project that continues the original sing-box panel design while adding a versioned API, mobile apps, stronger authentication, richer analytics, and safer WireGuard management. The additions maintained here are listed first so the differences from the upstream project are immediately visible.
 
 - Android arm64 and iPhone arm64 management apps with visual and raw JSON editors.
 - Versioned `/apiv3` API covering resources, users, usage/statistics, logs, audit history, backup, and everyday tools.
@@ -37,12 +37,11 @@ This repository extends [alireza0/s-ui](https://github.com/alireza0/s-ui) while 
 
 ## Release artifact naming
 
-Tag builds include the tag in every downloadable filename, for example `s-ui-v1.2.0-linux-amd64.tar.gz`, `s-ui-v1.2.0-windows-amd64.zip`, `s-ui-v1.2.0-android-arm64.apk`, and `s-ui-v1.2.0-iphone-arm64-unsigned.ipa`.
+Tag builds include the tag in every downloadable filename, for example `s-ui-next-v1.2.0-linux-amd64.tar.gz`, `s-ui-next-v1.2.0-windows-amd64.zip`, `s-ui-next-v1.2.0-android-arm64.apk`, and `s-ui-next-v1.2.0-iphone-arm64-unsigned.ipa`.
 
-![](https://img.shields.io/github/v/release/ciallothu/s-ui.svg)
-![S-UI Docker pull](https://img.shields.io/docker/pulls/alireza7/s-ui.svg)
-[![Go Report Card](https://goreportcard.com/badge/github.com/alireza0/s-ui)](https://goreportcard.com/report/github.com/alireza0/s-ui)
-[![Downloads](https://img.shields.io/github/downloads/alireza0/s-ui/total.svg)](https://img.shields.io/github/downloads/alireza0/s-ui/total.svg)
+![](https://img.shields.io/github/v/release/ciallothu/s-ui-next.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ciallothu/s-ui-next)](https://goreportcard.com/report/github.com/ciallothu/s-ui-next)
+[![Downloads](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)
 [![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
 > **Disclaimer:** This project is only for personal learning and communication, please do not use it for illegal purposes, please do not use it in a production environment
@@ -50,12 +49,6 @@ Tag builds include the tag in every downloadable filename, for example `s-ui-v1.
 **If you think this project is helpful to you, you may wish to give a**:star2:
 
 **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding conventions, testing, and the pull request process.
-
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/alireza7)
-
-<a href="https://nowpayments.io/donation/alireza7" target="_blank" rel="noreferrer noopener">
-   <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Crypto donation button by NOWPayments">
-</a>
 
 ## Quick Overview
 | Features                               |      Enable?       |
@@ -80,13 +73,13 @@ Tag builds include the tag in every downloadable filename, for example `s-ui-v1.
 
 ## Screenshots
 
-!["Main"](https://github.com/alireza0/s-ui-frontend/raw/main/media/main.png)
+!["Main"](https://github.com/ciallothu/s-ui-next-frontend/raw/main/media/main.png)
 
-[Other UI Screenshots](https://github.com/alireza0/s-ui-frontend/blob/main/screenshots.md)
+[Other UI Screenshots](https://github.com/ciallothu/s-ui-next-frontend/blob/main/screenshots.md)
 
 ## API Documentation
 
-[API-Documentation Wiki](https://github.com/alireza0/s-ui/wiki/API-Documentation)
+[API-Documentation Wiki](https://github.com/ciallothu/s-ui-next/wiki/API-Documentation)
 
 ## Authentication configuration
 
@@ -108,7 +101,7 @@ TOTP is managed from **Admins → Login security**. Enabling it shows an authent
 
 ### WebAuthn passkeys
 
-Enable passkeys in **Settings → Login & identity**, then add passkeys from **Admins → Login security**. RP ID and allowed origins can normally be left blank: S-UI auto-detects the current management domain from the browser origin and reverse-proxy headers such as `Forwarded`, `X-Forwarded-Host`, and `X-Forwarded-Proto`.
+Enable passkeys in **Settings → Login & identity**, then add passkeys from **Admins → Login security**. RP ID and allowed origins can normally be left blank: S-UI Next auto-detects the current management domain from the browser origin and reverse-proxy headers such as `Forwarded`, `X-Forwarded-Host`, and `X-Forwarded-Proto`.
 
 Manual configuration is still available for unusual proxy layouts. RP ID should be only the domain, for example `panel.example.com`; allowed origins should include full scheme origins, for example `https://panel.example.com`. Passkeys require HTTPS except for localhost-style development origins. The Web UI gives a best-effort automatic name such as iCloud Keychain, Google Password Manager, Windows Hello, or Security key; names can be renamed afterwards.
 
@@ -116,16 +109,16 @@ Manual configuration is still available for unusual proxy layouts. RP ID should 
 
 The WireGuard editor follows the field semantics of the embedded sing-box `v1.13.12` Endpoint implementation:
 
-- **Server Endpoint addresses** identify the S-UI side itself and should normally be an IPv4 `/32` and/or IPv6 `/128`, such as `10.66.66.1/32` and `fd66:66:66::1/128`.
+- **Server Endpoint addresses** identify the S-UI Next side itself and should normally be an IPv4 `/32` and/or IPv6 `/128`, such as `10.66.66.1/32` and `fd66:66:66::1/128`.
 - **Virtual network prefixes** are allocation ranges, such as `10.66.66.0/24` and `fd66:66:66::/64`. They are not written into the Endpoint `address` field.
 - **Server peer allowed IPs** assign source addresses to one peer and therefore use unique host routes such as `/32` and `/128`.
 - **Client AllowedIPs** choose destination traffic sent through the client tunnel. New peers default to the WireGuard virtual networks; `0.0.0.0/0` and `::/0` are only emitted after explicitly selecting the full-tunnel preset.
 - **Client Endpoint host/port** must identify the real public WireGuard UDP entrypoint. It is deliberately independent from the Web panel hostname, which may be behind Cloudflare Access or an HTTP reverse proxy.
 - **Regular clients** have no sing-box runtime peer address/port. WireGuard learns the current endpoint from handshakes, so this is suitable for phones, laptops, and NATed devices.
 - **Fixed remote nodes** use a known remote WireGuard address and UDP port. Their server-side AllowedIPs normally remain the node’s own `/32` and/or `/128`.
-- **Site gateways** represent a remote gateway plus one or more LAN prefixes behind it. The server runtime peer AllowedIPs include the gateway tunnel address plus the remote site CIDRs. The exported client configuration includes the S-UI WireGuard virtual networks and configured local site CIDRs, not the remote site’s own LAN.
+- **Site gateways** represent a remote gateway plus one or more LAN prefixes behind it. The server runtime peer AllowedIPs include the gateway tunnel address plus the remote site CIDRs. The exported client configuration includes the S-UI Next WireGuard virtual networks and configured local site CIDRs, not the remote site’s own LAN.
 - **PSK and private keys** are generated with backend secure randomness, hidden in ordinary API resource responses, preserved when saving redacted forms, and revealed only through explicit generation/copy/export actions.
-- **Device forwarding through S-UI** is stored in a dedicated managed-route table and injected when the runtime configuration is generated. It means traffic is forwarded by this S-UI server between devices in the same Endpoint; it is not a direct device-to-device tunnel or NAT traversal feature. Equivalent user rules are not duplicated, and disabling the feature never deletes a user-authored rule.
+- **Device forwarding through S-UI Next** is stored in a dedicated managed-route table and injected when the runtime configuration is generated. It means traffic is forwarded by this S-UI Next server between devices in the same Endpoint; it is not a direct device-to-device tunnel or NAT traversal feature. Equivalent user rules are not duplicated, and disabling the feature never deletes a user-authored rule.
 - **Site-to-site routing** requires a return path on the local or remote LAN. If NAT is not configured separately, add a route such as `192.168.50.0/24 via <WireGuard gateway>` on the relevant network; otherwise only one-way traffic may be visible.
 
 Use **Save** to keep a validated change without altering the current runtime. **Save & apply** validates the complete generated configuration, restarts the embedded core synchronously, checks the running state, and restores the previous runtime if application fails. Existing Endpoint JSON remains readable; the database migration adds only the managed-route table, while WireGuard editor metadata is stored compatibly in the existing Endpoint options.
@@ -141,11 +134,11 @@ Use **Save** to keep a validated change without altering the current runtime. **
 
 ### Linux/macOS
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/alireza0/s-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ciallothu/s-ui-next/master/install.sh)
 ```
 
 ### Windows
-1. Download the latest Windows release from [GitHub Releases](https://github.com/alireza0/s-ui/releases/latest)
+1. Download the latest Windows release from [GitHub Releases](https://github.com/ciallothu/s-ui-next/releases/latest)
 2. Extract the ZIP file
 3. Run `install-windows.bat` as Administrator
 4. Follow the installation wizard
@@ -155,40 +148,40 @@ bash <(curl -Ls https://raw.githubusercontent.com/alireza0/s-ui/master/install.s
 **Step 1:** To install your desired legacy version, add the version to the end of the installation command. e.g., ver `1.0.0`:
 
 ```sh
-VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/alireza0/s-ui/$VERSION/install.sh) $VERSION
+VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/ciallothu/s-ui-next/$VERSION/install.sh) $VERSION
 ```
 
 ## Manual installation
 
 ### Linux/macOS
-1. Get the latest version of S-UI based on your OS/Architecture from GitHub: [https://github.com/alireza0/s-ui/releases/latest](https://github.com/alireza0/s-ui/releases/latest)
-2. **OPTIONAL** Get the latest version of `s-ui.sh` [https://raw.githubusercontent.com/alireza0/s-ui/master/s-ui.sh](https://raw.githubusercontent.com/alireza0/s-ui/master/s-ui.sh)
-3. **OPTIONAL** Copy `s-ui.sh` to /usr/bin/ and run `chmod +x /usr/bin/s-ui`.
-4. Extract s-ui tar.gz file to a directory of your choice and navigate to the directory where you extracted the tar.gz file.
+1. Get the latest version of S-UI Next based on your OS/Architecture from GitHub: [https://github.com/ciallothu/s-ui-next/releases/latest](https://github.com/ciallothu/s-ui-next/releases/latest)
+2. **OPTIONAL** Get the latest version of `s-ui-next.sh` [https://raw.githubusercontent.com/ciallothu/s-ui-next/master/s-ui-next.sh](https://raw.githubusercontent.com/ciallothu/s-ui-next/master/s-ui-next.sh)
+3. **OPTIONAL** Copy `s-ui-next.sh` to /usr/bin/ and run `chmod +x /usr/bin/s-ui-next`.
+4. Extract s-ui-next tar.gz file to a directory of your choice and navigate to the directory where you extracted the tar.gz file.
 5. Copy *.service files to /etc/systemd/system/ and run `systemctl daemon-reload`.
-6. Enable autostart and start S-UI service using `systemctl enable s-ui --now`
+6. Enable autostart and start S-UI Next service using `systemctl enable s-ui-next --now`
 7. Start sing-box service using `systemctl enable sing-box --now`
 
 ### Windows
-1. Get the latest Windows version from GitHub: [https://github.com/alireza0/s-ui/releases/latest](https://github.com/alireza0/s-ui/releases/latest)
-2. Download the appropriate Windows package (e.g., `s-ui-windows-amd64.zip`)
+1. Get the latest Windows version from GitHub: [https://github.com/ciallothu/s-ui-next/releases/latest](https://github.com/ciallothu/s-ui-next/releases/latest)
+2. Download the appropriate Windows package (e.g., `s-ui-next-windows-amd64.zip`)
 3. Extract the ZIP file to a directory of your choice
 4. Run `install-windows.bat` as Administrator
 5. Follow the installation wizard
 6. Access the panel at http://localhost:2095/app
 
-## Uninstall S-UI
+## Uninstall S-UI Next
 
 ```sh
 sudo -i
 
-systemctl disable s-ui  --now
+systemctl disable s-ui-next  --now
 
 rm -f /etc/systemd/system/sing-box.service
 systemctl daemon-reload
 
-rm -fr /usr/local/s-ui
-rm /usr/bin/s-ui
+rm -fr /usr/local/s-ui-next
+rm /usr/bin/s-ui-next
 ```
 
 ## Install using Docker
@@ -204,34 +197,34 @@ rm /usr/bin/s-ui
 curl -fsSL https://get.docker.com | sh
 ```
 
-**Step 2:** Install S-UI
+**Step 2:** Install S-UI Next
 
 > Docker compose method
 
 ```shell
-mkdir s-ui && cd s-ui
-wget -q https://raw.githubusercontent.com/alireza0/s-ui/master/docker-compose.yml
+mkdir s-ui-next && cd s-ui-next
+wget -q https://raw.githubusercontent.com/ciallothu/s-ui-next/master/docker-compose.yml
 docker compose up -d
 ```
 
 > Use docker
 
 ```shell
-mkdir s-ui && cd s-ui
+mkdir s-ui-next && cd s-ui-next
 docker run -itd \
     -p 2095:2095 -p 2096:2096 -p 443:443 -p 80:80 \
     -v $PWD/db/:/app/db/ \
     -v $PWD/cert/:/root/cert/ \
-    --name s-ui --restart=unless-stopped \
-    alireza7/s-ui:latest
+    --name s-ui-next --restart=unless-stopped \
+    ghcr.io/ciallothu/s-ui-next:latest
 ```
 
 > Build your own image
 
 ```shell
-git clone https://github.com/alireza0/s-ui
+git clone https://github.com/ciallothu/s-ui-next
 git submodule update --init --recursive
-docker build -t s-ui .
+docker build -t s-ui-next .
 ```
 
 </details>
@@ -249,7 +242,7 @@ docker build -t s-ui .
 ### Clone the repository
 ```shell
 # clone repository
-git clone https://github.com/alireza0/s-ui
+git clone https://github.com/ciallothu/s-ui-next
 # clone submodules
 git submodule update --init --recursive
 ```
@@ -257,7 +250,7 @@ git submodule update --init --recursive
 
 ### - Frontend
 
-Visit [s-ui-frontend](https://github.com/alireza0/s-ui-frontend) for frontend code
+Visit [s-ui-next-frontend](https://github.com/ciallothu/s-ui-next-frontend) for frontend code
 
 ### - Backend
 > Please build frontend once before!
@@ -341,4 +334,4 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 </details>
 
 ## Stargazers over Time
-[![Stargazers over time](https://starchart.cc/alireza0/s-ui.svg)](https://starchart.cc/alireza0/s-ui)
+[![Stargazers over time](https://starchart.cc/ciallothu/s-ui-next.svg)](https://starchart.cc/ciallothu/s-ui-next)

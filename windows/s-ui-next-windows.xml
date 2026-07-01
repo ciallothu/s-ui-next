@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <service>
-  <id>s-ui</id>
-  <name>S-UI Proxy Panel</name>
-  <description>S-UI is a proxy panel for managing proxy services</description>
+  <id>s-ui-next</id>
+  <name>S-UI Next Proxy Panel</name>
+  <description>S-UI Next is a proxy panel for managing proxy services</description>
   <executable>%BASE%\sui.exe</executable>
   <arguments></arguments>
   <logmode>rotate</logmode>

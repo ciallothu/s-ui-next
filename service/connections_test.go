@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/alireza0/s-ui/logger"
+	"github.com/ciallothu/s-ui-next/logger"
 )
 
 func TestParseConnectionLogExamples(t *testing.T) {

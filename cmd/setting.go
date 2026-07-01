@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/service"
+	"github.com/ciallothu/s-ui-next/config"
+	"github.com/ciallothu/s-ui-next/database"
+	"github.com/ciallothu/s-ui-next/service"
 
 	"github.com/shirou/gopsutil/v4/net"
 )

@@ -1,4 +1,4 @@
-name: Build S-UI for Windows
+name: Build S-UI Next for Windows
 
 on:
   workflow_dispatch:
@@ -97,7 +97,7 @@ jobs:
           # Install zip
           choco install zip -y
 
-      - name: Build s-ui
+      - name: Build s-ui-next
         shell: bash
         run: |
           export CGO_ENABLED=${{ matrix.cgo }}
@@ -111,25 +111,25 @@ jobs:
           go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o sui.exe main.go
           file sui.exe
           
-          mkdir s-ui-windows
-          cp sui.exe s-ui-windows/
-          cp -r windows/* s-ui-windows/
+          mkdir s-ui-next-windows
+          cp sui.exe s-ui-next-windows/
+          cp -r windows/* s-ui-next-windows/
 
       - name: Download libcronet-go
         shell: bash
         run: |
-          curl -qsL -o s-ui-windows/libcronet.dll ${{ env.LIBCRONET_BASE_URL }}/libcronet-windows-${{ matrix.arch }}.dll
+          curl -qsL -o s-ui-next-windows/libcronet.dll ${{ env.LIBCRONET_BASE_URL }}/libcronet-windows-${{ matrix.arch }}.dll
 
       - name: Package
         shell: bash
         run: |
-          zip -r "s-ui-${BUILD_VERSION}-windows-${{ matrix.arch }}.zip" s-ui-windows
+          zip -r "s-ui-next-${BUILD_VERSION}-windows-${{ matrix.arch }}.zip" s-ui-next-windows
 
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: s-ui-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}
-          path: ./s-ui-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}.zip
+          name: s-ui-next-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}
+          path: ./s-ui-next-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}.zip
           retention-days: 30
 
       - name: Upload to Release
@@ -140,7 +140,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
-          file: s-ui-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}.zip
-          asset_name: s-ui-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}.zip
+          file: s-ui-next-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}.zip
+          asset_name: s-ui-next-${{ env.BUILD_VERSION }}-windows-${{ matrix.arch }}.zip
           prerelease: true
           overwrite: true

@@ -61,7 +61,7 @@ class _ToolsPageState extends State<ToolsPage> {
               onPressed: () async {
                 Navigator.pop(dialogContext);
                 final excluded = [if (excludeStats) 'stats', if (excludeChanges) 'changes'].join(',');
-                await run(() => download('backup/database', 's-ui-backup.db', query: {'exclude': excluded}));
+                await run(() => download('backup/database', 's-ui-next-backup.db', query: {'exclude': excluded}));
               },
               child: Text(context.t('tools.export')),
             ),
@@ -166,7 +166,7 @@ class _ToolsPageState extends State<ToolsPage> {
             _group(
               context.t('tools.currentConnection'),
               [
-                ListTile(leading: const Icon(Icons.link), title: Text(state.profile?.name ?? 'S-UI'), subtitle: Text(state.profile?.normalizedBaseUrl ?? '')),
+                ListTile(leading: const Icon(Icons.link), title: Text(state.profile?.name ?? 'S-UI Next'), subtitle: Text(state.profile?.normalizedBaseUrl ?? '')),
                 ListTile(leading: const Icon(Icons.translate), title: Text(context.t('common.language')), trailing: SizedBox(width: 160, child: AnchoredSelect<String>(value: state.localeCode, compact: true, options: [for (final language in AppLocalizations.languages) SelectOption(language.code, language.label)], onChanged: state.setLocale))),
                 ListTile(leading: const Icon(Icons.http), title: Text(context.t('tools.customHeaders')), subtitle: Text(state.profile?.activeHeaders.keys.join('\n') ?? context.t('tools.noHeaders'))),
                 ListTile(leading: const Icon(Icons.edit_outlined), title: Text(context.t('tools.reconfigure')), subtitle: Text(context.t('tools.reconfigureHint')), onTap: state.reconfigure),

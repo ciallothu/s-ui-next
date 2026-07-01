@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alireza0/s-ui/api"
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/middleware"
-	"github.com/alireza0/s-ui/network"
-	"github.com/alireza0/s-ui/service"
+	"github.com/ciallothu/s-ui-next/api"
+	"github.com/ciallothu/s-ui-next/config"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/middleware"
+	"github.com/ciallothu/s-ui-next/network"
+	"github.com/ciallothu/s-ui-next/service"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
@@ -87,7 +87,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	assetsBasePath := base_url + "assets/"
 
 	store := cookie.NewStore(secret)
-	engine.Use(sessions.Sessions("s-ui", store))
+	engine.Use(sessions.Sessions("s-ui-next", store))
 
 	engine.Use(func(c *gin.Context) {
 		uri := c.Request.RequestURI

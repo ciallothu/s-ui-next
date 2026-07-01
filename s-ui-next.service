@@ -1,12 +1,12 @@
 [Unit]
-Description=s-ui Service
+Description=s-ui-next Service
 After=network.target
 Wants=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/usr/local/s-ui/
-ExecStart=/usr/local/s-ui/sui
+WorkingDirectory=/usr/local/s-ui-next/
+ExecStart=/usr/local/s-ui-next/sui
 Restart=on-failure
 RestartSec=10s
 

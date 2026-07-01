@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/database"
+	"github.com/ciallothu/s-ui-next/database/model"
+	"github.com/ciallothu/s-ui-next/util/common"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -194,7 +194,7 @@ type authWebUser struct {
 }
 
 func (u *authWebUser) WebAuthnID() []byte {
-	value := sha256.Sum256([]byte("s-ui-passkey-user:" + u.User.Username))
+	value := sha256.Sum256([]byte("s-ui-next-passkey-user:" + u.User.Username))
 	return value[:]
 }
 func (u *authWebUser) WebAuthnName() string                       { return u.User.Username }
@@ -220,7 +220,7 @@ func (s *AuthService) webAuthn(request *http.Request) (*webauthn.WebAuthn, error
 		return nil, common.NewError("passkey RP ID and origins are required; leave them blank only when the panel is accessed through a valid browser origin")
 	}
 	return webauthn.New(&webauthn.Config{
-		RPDisplayName: "S-UI", RPID: rpID, RPOrigins: origins,
+		RPDisplayName: "S-UI Next", RPID: rpID, RPOrigins: origins,
 		AuthenticatorSelection: protocol.AuthenticatorSelection{ResidentKey: protocol.ResidentKeyRequirementPreferred, UserVerification: protocol.VerificationRequired},
 	})
 }

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/database/model"
+	"github.com/ciallothu/s-ui-next/config"
+	"github.com/ciallothu/s-ui-next/database/model"
 	"golang.org/x/crypto/bcrypt"
 
 	"gorm.io/driver/sqlite"

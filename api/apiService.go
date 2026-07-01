@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/service"
-	"github.com/alireza0/s-ui/util"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/database"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/service"
+	"github.com/ciallothu/s-ui-next/util"
+	"github.com/ciallothu/s-ui-next/util/common"
 
 	"github.com/gin-gonic/gin"
 )
@@ -248,7 +248,7 @@ func (a *ApiService) GetDb(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db")
+	c.Header("Content-Disposition", "attachment; filename=s-ui-next_"+time.Now().Format("20060102-150405")+".db")
 	c.Writer.Write(db)
 }
 

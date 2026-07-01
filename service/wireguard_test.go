@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
+	"github.com/ciallothu/s-ui-next/database"
+	"github.com/ciallothu/s-ui-next/database/model"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -223,7 +223,7 @@ func TestWireGuardRuntimeJSONStripsDynamicSiteGatewayEndpoint(t *testing.T) {
 }
 
 func TestWireGuardExportUsesAdvertisedEndpointAndSplitTunnel(t *testing.T) {
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui-next.db")); err != nil {
 		t.Fatal(err)
 	}
 	fixture := testWireGuardData(t)
@@ -255,7 +255,7 @@ func TestWireGuardExportUsesAdvertisedEndpointAndSplitTunnel(t *testing.T) {
 }
 
 func TestWireGuardGetAllRedactsSecrets(t *testing.T) {
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui-next.db")); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(testWireGuardData(t))
@@ -337,7 +337,7 @@ func TestWireGuardSiteGatewayRoutesRemoteSite(t *testing.T) {
 		t.Fatalf("site gateway remote CIDRs were not added to server allowed IPs: %s", serverAllowed)
 	}
 
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui-next.db")); err != nil {
 		t.Fatal(err)
 	}
 	var endpoint model.Endpoint
@@ -370,7 +370,7 @@ func TestWireGuardSiteGatewayRoutesRemoteSite(t *testing.T) {
 }
 
 func TestManagedWireGuardRouteDoesNotDuplicateUserRule(t *testing.T) {
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui-next.db")); err != nil {
 		t.Fatal(err)
 	}
 	rule := model.ManagedRouteRule{

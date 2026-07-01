@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/util/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -46,7 +46,7 @@ func (a *ApiService) SecuritySummary(c *gin.Context) {
 }
 
 func (a *ApiService) TOTPBegin(c *gin.Context) {
-	result, err := a.UserService.BeginTOTP(GetLoginUser(c), "S-UI")
+	result, err := a.UserService.BeginTOTP(GetLoginUser(c), "S-UI Next")
 	jsonObj(c, result, err)
 }
 

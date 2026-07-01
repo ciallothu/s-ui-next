@@ -1,4 +1,4 @@
-name: Release S-UI
+name: Release S-UI Next
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ on:
       - '**.go'
       - 'go.mod'
       - 'go.sum'
-      - 's-ui.service'
+      - 's-ui-next.service'
 
 permissions:
   contents: write
@@ -170,7 +170,7 @@ jobs:
             echo "CGO_LDFLAGS=--sysroot=$SYSROOT -static" >> $GITHUB_ENV
           fi
 
-      - name: Build s-ui
+      - name: Build s-ui-next
         run: |
           set -e
           BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale"
@@ -179,19 +179,19 @@ jobs:
           file sui
           ldd sui 2>/dev/null || echo "Static binary confirmed"
 
-          mkdir s-ui
-          cp sui s-ui/
-          cp s-ui.service s-ui/
-          cp s-ui.sh s-ui/
+          mkdir s-ui-next
+          cp sui s-ui-next/
+          cp s-ui-next.service s-ui-next/
+          cp s-ui-next.sh s-ui-next/
 
       - name: Package
-        run: tar -zcvf "s-ui-${BUILD_VERSION}-linux-${{ matrix.platform }}.tar.gz" s-ui
+        run: tar -zcvf "s-ui-next-${BUILD_VERSION}-linux-${{ matrix.platform }}.tar.gz" s-ui-next
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: s-ui-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}
-          path: ./s-ui-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
+          name: s-ui-next-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}
+          path: ./s-ui-next-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
           retention-days: 30
 
       - name: Upload to Release
@@ -202,7 +202,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
-          file: s-ui-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
-          asset_name: s-ui-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
+          file: s-ui-next-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
+          asset_name: s-ui-next-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
           prerelease: true
           overwrite: true

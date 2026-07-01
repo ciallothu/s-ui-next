@@ -23,7 +23,7 @@ frontend/
 # Windows build artifacts
 *.exe
 *.zip
-s-ui-windows/
+s-ui-next-windows/
 sui-*.exe
 sui-*.zip
 windows/sui-*.exe

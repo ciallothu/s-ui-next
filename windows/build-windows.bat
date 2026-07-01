@@ -1,9 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
-echo Building S-UI for Windows...
+echo Building S-UI Next for Windows...
 
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 
 REM Check if Go is installed
 go version >nul 2>&1

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alireza0/s-ui/database/model"
+	"github.com/ciallothu/s-ui-next/database/model"
 )
 
 func TestGetHeadersRespectsGranularUserInfoOptions(t *testing.T) {

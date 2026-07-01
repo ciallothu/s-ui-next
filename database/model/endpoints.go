@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 )
 
-// ManagedRouteRule stores routes owned by S-UI. These rules are injected into
+// ManagedRouteRule stores routes owned by S-UI Next. These rules are injected into
 // the generated sing-box configuration and never mixed into the user's route
 // JSON, so disabling a feature cannot delete a user-authored rule.
 type ManagedRouteRule struct {
@@ -96,7 +96,7 @@ var wireGuardPeerMetadataKeys = []string{
 	"remote_site_cidrs", "local_site_cidrs", "route_inbounds",
 }
 
-// wireGuardRuntimeOptions removes S-UI export/editor metadata before the
+// wireGuardRuntimeOptions removes S-UI Next export/editor metadata before the
 // object is handed to sing-box v1.13.12. Only fields accepted by
 // option.WireGuardEndpointOptions and option.WireGuardPeer remain.
 func wireGuardRuntimeOptions(options map[string]interface{}) map[string]interface{} {

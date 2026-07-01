@@ -6,8 +6,8 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/alireza0/s-ui/cmd/migration"
-	"github.com/alireza0/s-ui/config"
+	"github.com/ciallothu/s-ui-next/cmd/migration"
+	"github.com/ciallothu/s-ui-next/config"
 )
 
 func ParseCmd() {
@@ -54,7 +54,7 @@ func ParseCmd() {
 
 	flag.Parse()
 	if showVersion {
-		fmt.Println("S-UI Panel\t", config.GetVersion())
+		fmt.Println("S-UI Next Panel\t", config.GetVersion())
 		info, ok := debug.ReadBuildInfo()
 		if ok {
 			for _, dep := range info.Deps {

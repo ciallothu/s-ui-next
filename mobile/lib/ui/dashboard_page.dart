@@ -28,7 +28,7 @@ class DashboardPage extends StatelessWidget {
         children: [
           PageHeader(
             title: context.t('dashboard.title'),
-            subtitle: '${system['hostName'] ?? 'S-UI'} · v${system['appVersion'] ?? '—'}',
+            subtitle: '${system['hostName'] ?? 'S-UI Next'} · v${system['appVersion'] ?? '—'}',
             actions: [
               IconButton.filledTonal(
                 tooltip: context.t('dashboard.restartCore'),

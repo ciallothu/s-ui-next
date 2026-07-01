@@ -71,7 +71,7 @@ class ApiClient {
 
   Future<dynamic> uploadDatabase(String path, String filePath) async {
     final form = FormData.fromMap({
-      'db': await MultipartFile.fromFile(filePath, filename: 's-ui.db'),
+      'db': await MultipartFile.fromFile(filePath, filename: 's-ui-next.db'),
     });
     return _request(() => _dio.post<dynamic>(path, data: form));
   }

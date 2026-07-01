@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/alireza0/s-ui/service"
+	"github.com/ciallothu/s-ui-next/service"
 	"github.com/gin-gonic/gin"
 )
 

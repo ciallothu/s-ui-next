@@ -54,9 +54,9 @@ func GetDBFolderPath() string {
 		if err != nil {
 			// Cross-platform fallback path
 			if runtime.GOOS == "windows" {
-				return "C:\\Program Files\\s-ui\\db"
+				return "C:\\Program Files\\s-ui-next\\db"
 			}
-			return "/usr/local/s-ui/db"
+			return "/usr/local/s-ui-next/db"
 		}
 		dbFolderPath = filepath.Join(dir, "db")
 	}
@@ -64,5 +64,16 @@ func GetDBFolderPath() string {
 }
 
 func GetDBPath() string {
-	return fmt.Sprintf("%s/%s.db", GetDBFolderPath(), GetName())
+	dbFolder := GetDBFolderPath()
+	dbPath := fmt.Sprintf("%s/%s.db", dbFolder, GetName())
+	if _, err := os.Stat(dbPath); err == nil {
+		return dbPath
+	}
+	legacyPath := fmt.Sprintf("%s/s-ui.db", dbFolder)
+	if GetName() != "s-ui" {
+		if _, err := os.Stat(legacyPath); err == nil {
+			return legacyPath
+		}
+	}
+	return dbPath
 }

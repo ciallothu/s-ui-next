@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/ciallothu/s-ui-next/database/model"
+	"github.com/ciallothu/s-ui-next/util/common"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -53,7 +53,7 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	publicKey := privateKey.PublicKey().String()
 	hostName, _ := os.Hostname()
 
-	data := fmt.Sprintf(`{"key":"%s","tos":"%s","type": "PC","model": "s-ui", "name": "%s"}`, publicKey, tos, hostName)
+	data := fmt.Sprintf(`{"key":"%s","tos":"%s","type": "PC","model": "s-ui-next", "name": "%s"}`, publicKey, tos, hostName)
 	url := "https://api.cloudflareclient.com/v0a2158/reg"
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(data)))

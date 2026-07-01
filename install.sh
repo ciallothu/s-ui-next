@@ -60,7 +60,7 @@ install_base() {
 
 config_after_install() {
     echo -e "${yellow}Migration... ${plain}"
-    /usr/local/s-ui/sui migrate
+    /usr/local/s-ui-next/sui migrate
     
     echo -e "${yellow}Install/update finished! For security it's recommended to modify panel settings ${plain}"
     read -p "Do you want to continue with the modification [y/n]? ": config_confirm
@@ -83,7 +83,7 @@ config_after_install() {
         [ -z "$config_path" ] || params="$params -path $config_path"
         [ -z "$config_subPort" ] || params="$params -subPort $config_subPort"
         [ -z "$config_subPath" ] || params="$params -subPath $config_subPath"
-        /usr/local/s-ui/sui setting ${params}
+        /usr/local/s-ui-next/sui setting ${params}
 
         read -p "Do you want to change admin credentials [y/n]? ": admin_confirm
         if [[ "${admin_confirm}" == "y" || "${admin_confirm}" == "Y" ]]; then
@@ -93,14 +93,14 @@ config_after_install() {
 
             # Set credentials
             echo -e "${yellow}Initializing, please wait...${plain}"
-            /usr/local/s-ui/sui admin -username ${config_account} -password ${config_password}
+            /usr/local/s-ui-next/sui admin -username ${config_account} -password ${config_password}
         else
             echo -e "${yellow}Your current admin credentials: ${plain}"
-            /usr/local/s-ui/sui admin -show
+            /usr/local/s-ui-next/sui admin -show
         fi
     else
         echo -e "${red}cancel...${plain}"
-        if [[ ! -f "/usr/local/s-ui/db/s-ui.db" ]]; then
+        if [[ ! -f "/usr/local/s-ui-next/db/s-ui-next.db" ]]; then
             local usernameTemp=$(head -c 6 /dev/urandom | base64)
             local passwordTemp=$(head -c 6 /dev/urandom | base64)
             echo -e "this is a fresh installation,will generate random login info for security concerns:"
@@ -108,10 +108,10 @@ config_after_install() {
             echo -e "${green}username:${usernameTemp}${plain}"
             echo -e "${green}password:${passwordTemp}${plain}"
             echo -e "###############################################"
-            echo -e "${red}if you forgot your login info,you can type ${green}s-ui${red} for configuration menu${plain}"
-            /usr/local/s-ui/sui admin -username ${usernameTemp} -password ${passwordTemp}
+            echo -e "${red}if you forgot your login info,you can type ${green}s-ui-next${red} for configuration menu${plain}"
+            /usr/local/s-ui-next/sui admin -username ${usernameTemp} -password ${passwordTemp}
         else
-            echo -e "${red} this is your upgrade,will keep old settings,if you forgot your login info,you can type ${green}s-ui${red} for configuration menu${plain}"
+            echo -e "${red} this is your upgrade,will keep old settings,if you forgot your login info,you can type ${green}s-ui-next${red} for configuration menu${plain}"
         fi
     fi
 }
@@ -120,69 +120,69 @@ prepare_services() {
     if [[ -f "/etc/systemd/system/sing-box.service" ]]; then
         echo -e "${yellow}Stopping sing-box service... ${plain}"
         systemctl stop sing-box
-        rm -f /usr/local/s-ui/bin/sing-box /usr/local/s-ui/bin/runSingbox.sh /usr/local/s-ui/bin/signal
+        rm -f /usr/local/s-ui-next/bin/sing-box /usr/local/s-ui-next/bin/runSingbox.sh /usr/local/s-ui-next/bin/signal
     fi
-    if [[ -e "/usr/local/s-ui/bin" ]]; then
+    if [[ -e "/usr/local/s-ui-next/bin" ]]; then
         echo -e "###############################################################"
-        echo -e "${green}/usr/local/s-ui/bin${red} directory exists yet!"
+        echo -e "${green}/usr/local/s-ui-next/bin${red} directory exists yet!"
         echo -e "Please check the content and delete it manually after migration ${plain}"
         echo -e "###############################################################"
     fi
     systemctl daemon-reload
 }
 
-install_s-ui() {
+install_s_ui_next() {
     cd /tmp/
 
     if [ $# == 0 ]; then
-        last_version=$(curl -Ls "https://api.github.com/repos/alireza0/s-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -Ls "https://api.github.com/repos/ciallothu/s-ui-next/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}Failed to fetch s-ui version, it maybe due to Github API restrictions, please try it later${plain}"
+            echo -e "${red}Failed to fetch s-ui-next version, it maybe due to Github API restrictions, please try it later${plain}"
             exit 1
         fi
-        echo -e "Got s-ui latest version: ${last_version}, beginning the installation..."
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz https://github.com/alireza0/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz
+        echo -e "Got s-ui-next latest version: ${last_version}, beginning the installation..."
+        wget -N --no-check-certificate -O /tmp/s-ui-next-linux-$(arch).tar.gz https://github.com/ciallothu/s-ui-next/releases/download/${last_version}/s-ui-next-linux-$(arch).tar.gz
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}Downloading s-ui failed, please be sure that your server can access Github ${plain}"
+            echo -e "${red}Downloading s-ui-next failed, please be sure that your server can access Github ${plain}"
             exit 1
         fi
     else
         last_version=$1
-        url="https://github.com/alireza0/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz"
-        echo -e "Beginning the install s-ui v$1"
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz ${url}
+        url="https://github.com/ciallothu/s-ui-next/releases/download/${last_version}/s-ui-next-linux-$(arch).tar.gz"
+        echo -e "Beginning the install s-ui-next v$1"
+        wget -N --no-check-certificate -O /tmp/s-ui-next-linux-$(arch).tar.gz ${url}
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}download s-ui v$1 failed,please check the version exists${plain}"
+            echo -e "${red}download s-ui-next v$1 failed,please check the version exists${plain}"
             exit 1
         fi
     fi
 
-    if [[ -e /usr/local/s-ui/ ]]; then
-        systemctl stop s-ui
+    if [[ -e /usr/local/s-ui-next/ ]]; then
+        systemctl stop s-ui-next
     fi
 
-    tar zxvf s-ui-linux-$(arch).tar.gz
-    rm s-ui-linux-$(arch).tar.gz -f
+    tar zxvf s-ui-next-linux-$(arch).tar.gz
+    rm s-ui-next-linux-$(arch).tar.gz -f
 
-    chmod +x s-ui/sui s-ui/s-ui.sh
-    cp s-ui/s-ui.sh /usr/bin/s-ui
-    cp -rf s-ui /usr/local/
-    cp -f s-ui/*.service /etc/systemd/system/
-    rm -rf s-ui
+    chmod +x s-ui-next/sui s-ui-next/s-ui-next.sh
+    cp s-ui-next/s-ui-next.sh /usr/bin/s-ui-next
+    cp -rf s-ui-next /usr/local/
+    cp -f s-ui-next/*.service /etc/systemd/system/
+    rm -rf s-ui-next
 
     config_after_install
     prepare_services
 
-    systemctl enable s-ui --now
+    systemctl enable s-ui-next --now
 
-    echo -e "${green}s-ui v${last_version}${plain} installation finished, it is up and running now..."
+    echo -e "${green}s-ui-next v${last_version}${plain} installation finished, it is up and running now..."
     echo -e "You may access the Panel with following URL(s):${green}"
-    /usr/local/s-ui/sui uri
+    /usr/local/s-ui-next/sui uri
     echo -e "${plain}"
     echo -e ""
-    s-ui help
+    s-ui-next help
 }
 
 echo -e "${green}Executing...${plain}"
 install_base
-install_s-ui $1
+install_s_ui_next $1

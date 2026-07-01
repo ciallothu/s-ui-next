@@ -1,9 +1,9 @@
 ---
 services:
-  s-ui:
-    image: alireza7/s-ui
-    container_name: s-ui
-    hostname: "s-ui"
+  s-ui-next:
+    image: ghcr.io/ciallothu/s-ui-next
+    container_name: s-ui-next
+    hostname: "s-ui-next"
     volumes:
       - "./db:/app/db"
       - "./cert:/app/cert"
@@ -13,10 +13,10 @@ services:
       - "2095:2095"
       - "2096:2096"
     networks:
-      - s-ui
+      - s-ui-next
     entrypoint: "./entrypoint.sh"
 
 networks:
-  s-ui:
+  s-ui-next:
     driver: bridge
   

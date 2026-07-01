@@ -3,9 +3,9 @@ package sub
 import (
 	"strings"
 
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/service"
-	"github.com/alireza0/s-ui/util"
+	"github.com/ciallothu/s-ui-next/logger"
+	"github.com/ciallothu/s-ui-next/service"
+	"github.com/ciallothu/s-ui-next/util"
 
 	"gopkg.in/yaml.v3"
 )

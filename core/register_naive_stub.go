@@ -3,7 +3,7 @@
 package core
 
 import (
-	"github.com/alireza0/s-ui/logger"
+	"github.com/ciallothu/s-ui-next/logger"
 	"github.com/sagernet/sing-box/adapter/outbound"
 )
 
