@@ -107,6 +107,28 @@ func (s *ClientService) newClientSubId(tx *gorm.DB) (string, error) {
 	return "", common.NewError("unable to generate a unique subscription id")
 }
 
+func (s *ClientService) GetEnabledBySubscriptionKey(db *gorm.DB, key string) (*model.Client, error) {
+	key = strings.TrimSpace(key)
+	client := &model.Client{}
+	if err := s.EnsureClientSubIds(db); err != nil {
+		return nil, err
+	}
+	err := db.Model(model.Client{}).Where("enable = true and sub_id = ?", key).First(client).Error
+	if err == nil {
+		return client, nil
+	}
+	if !database.IsNotFound(err) {
+		return nil, err
+	}
+
+	// Keep existing subscriptions usable after upgrading from name-based URLs.
+	err = db.Model(model.Client{}).Where("enable = true and name = ?", key).First(client).Error
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
 func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, hostname string) ([]uint, error) {
 	var err error
 	var inboundIds []uint

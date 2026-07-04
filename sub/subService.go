@@ -47,15 +47,7 @@ func (s *SubService) GetSubs(subId string) (*string, []string, error) {
 func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	db := database.GetDB()
 	clientService := service.ClientService{}
-	if err := clientService.EnsureClientSubIds(db); err != nil {
-		return nil, err
-	}
-	client := &model.Client{}
-	err := db.Model(model.Client{}).Where("enable = true and sub_id = ?", strings.TrimSpace(subId)).First(client).Error
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
+	return clientService.GetEnabledBySubscriptionKey(db, subId)
 }
 
 func (s *SubService) getClientHeaders(client *model.Client) []string {

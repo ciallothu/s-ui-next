@@ -13,6 +13,15 @@ func (a *ApiService) AuthMeta(c *gin.Context) {
 	jsonObj(c, a.AuthService.PublicAuthMethods(), nil)
 }
 
+func (a *ApiService) AuthCheck(c *gin.Context) {
+	username := GetLoginUser(c)
+	result := gin.H{"authenticated": username != ""}
+	if username != "" {
+		result["username"] = username
+	}
+	jsonObj(c, result, nil)
+}
+
 func (a *ApiService) OIDCStart(c *gin.Context) {
 	result, err := a.AuthService.BeginOIDC(c.Request.Context())
 	jsonObj(c, result, err)

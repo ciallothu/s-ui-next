@@ -99,11 +99,7 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 func (j *JsonService) getData(subId string) (*model.Client, []*model.Inbound, error) {
 	db := database.GetDB()
 	clientService := service.ClientService{}
-	if err := clientService.EnsureClientSubIds(db); err != nil {
-		return nil, nil, err
-	}
-	client := &model.Client{}
-	err := db.Model(model.Client{}).Where("enable = true and sub_id = ?", strings.TrimSpace(subId)).First(client).Error
+	client, err := clientService.GetEnabledBySubscriptionKey(db, subId)
 	if err != nil {
 		return nil, nil, err
 	}

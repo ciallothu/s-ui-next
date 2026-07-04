@@ -25,7 +25,7 @@ func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 			action = c.Param("getAction")
 		}
 		public := map[string]bool{
-			"login": true, "logout": true, "auth-meta": true, "oidc-start": true, "oidc-callback": true,
+			"login": true, "logout": true, "auth-meta": true, "auth-check": true, "oidc-start": true, "oidc-callback": true,
 			"passkey-login-begin": true, "passkey-login-finish": true,
 		}
 		if !public[action] {
@@ -91,6 +91,8 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		a.ApiService.Logout(c)
 	case "auth-meta":
 		a.ApiService.AuthMeta(c)
+	case "auth-check":
+		a.ApiService.AuthCheck(c)
 	case "oidc-start":
 		a.ApiService.OIDCStart(c)
 	case "oidc-callback":
