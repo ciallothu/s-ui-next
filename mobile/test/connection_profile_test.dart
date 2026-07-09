@@ -30,15 +30,26 @@ void main() {
 
   test('round-trips secure profile JSON', () {
     const profile = ConnectionProfile(
+      id: 'panel-1',
       name: 'panel',
       baseUrl: 'https://panel.example.com/',
       token: 'token',
       headers: {'X-Test': 'ok'},
     );
     final decoded = ConnectionProfile.decode(profile.encode());
+    expect(decoded.id, profile.id);
     expect(decoded.name, profile.name);
     expect(decoded.token, profile.token);
     expect(decoded.headers['X-Test'], 'ok');
     expect(decoded.headers, contains(ConnectionProfile.cloudflareClientId));
+  });
+
+  test('decodes legacy profile JSON without an id', () {
+    final decoded = ConnectionProfile.decode(
+      '{"name":"legacy","baseUrl":"https://panel.example.com/","token":"token"}',
+    );
+    expect(decoded.id, isEmpty);
+    expect(decoded.name, 'legacy');
+    expect(decoded.token, 'token');
   });
 }

@@ -2,12 +2,14 @@ import 'dart:convert';
 
 class ConnectionProfile {
   const ConnectionProfile({
+    this.id = '',
     required this.name,
     required this.baseUrl,
     this.token = '',
     this.headers = const {},
   });
 
+  final String id;
   final String name;
   final String baseUrl;
   final String token;
@@ -41,12 +43,14 @@ class ConnectionProfile {
       );
 
   ConnectionProfile copyWith({
+    String? id,
     String? name,
     String? baseUrl,
     String? token,
     Map<String, String>? headers,
   }) =>
       ConnectionProfile(
+        id: id ?? this.id,
         name: name ?? this.name,
         baseUrl: baseUrl ?? this.baseUrl,
         token: token ?? this.token,
@@ -54,6 +58,7 @@ class ConnectionProfile {
       );
 
   Map<String, dynamic> toJson() => {
+        'id': id,
         'name': name,
         'baseUrl': normalizedBaseUrl,
         'token': token,
@@ -72,6 +77,7 @@ class ConnectionProfile {
       }
     }
     return ConnectionProfile(
+      id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'S-UI Next',
       baseUrl: json['baseUrl']?.toString() ?? '',
       token: json['token']?.toString() ?? '',

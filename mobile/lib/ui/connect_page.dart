@@ -82,15 +82,15 @@ class _ConnectPageState extends State<ConnectPage> {
     final state = context.read<AppState>();
     try {
       if (useCredentials) {
-		final required = await state.connectWithCredentials(
-		  buildProfile(),
-		  username.text.trim(),
-		  password.text,
-		  code: secondFactor.text,
-		);
-		if (required && mounted) {
-		  setState(() => requiresSecondFactor = true);
-		}
+        final required = await state.connectWithCredentials(
+          buildProfile(),
+          username.text.trim(),
+          password.text,
+          code: secondFactor.text,
+        );
+        if (required && mounted) {
+          setState(() => requiresSecondFactor = true);
+        }
       } else {
         await state.connectWithToken(buildProfile());
       }
@@ -100,6 +100,26 @@ class _ConnectPageState extends State<ConnectPage> {
   }
 
   void addHeader() => setState(() => headers.add(_HeaderDraft('', '')));
+
+  Future<void> switchToSaved(ConnectionProfile saved) async {
+    final state = context.read<AppState>();
+    try {
+      await state.switchProfile(saved);
+    } catch (exception) {
+      if (mounted) showMessage(context, exception.toString(), error: true);
+    }
+  }
+
+  Future<void> removeSaved(ConnectionProfile saved) async {
+    final confirmed = await confirm(
+      context,
+      title: context.tr('panelSwitcher.forgetTitle'),
+      message: context.tr('panelSwitcher.forgetMessage', args: {'name': saved.name}),
+      action: context.tr('common.delete'),
+    );
+    if (!confirmed || !mounted) return;
+    await context.read<AppState>().removeProfile(saved);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +144,36 @@ class _ConnectPageState extends State<ConnectPage> {
                 const SizedBox(height: 6),
                 Text(context.t('connect.subtitle'), textAlign: TextAlign.center, style: TextStyle(color: colors.onSurfaceVariant)),
                 const SizedBox(height: 24),
+                if (state.profiles.isNotEmpty) ...[
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                            child: Text(context.t('panelSwitcher.saved'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                          ),
+                          for (final saved in state.profiles)
+                            ListTile(
+                              leading: Icon(saved.id == state.profile?.id ? Icons.check_circle : Icons.dns_outlined),
+                              title: Text(saved.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: Text(saved.normalizedBaseUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              enabled: !state.busy,
+                              onTap: state.busy ? null : () => switchToSaved(saved),
+                              trailing: IconButton(
+                                tooltip: context.t('common.delete'),
+                                onPressed: state.busy ? null : () => removeSaved(saved),
+                                icon: const Icon(Icons.delete_outline),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),

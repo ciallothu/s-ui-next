@@ -57,6 +57,11 @@ class _AppShellState extends State<AppShell> {
         centerTitle: !wide,
         actions: [
           IconButton(
+            tooltip: context.t('nav.switchPanel'),
+            onPressed: state.busy ? null : () => _showPanelSwitcher(context),
+            icon: const Icon(Icons.swap_horiz),
+          ),
+          IconButton(
             tooltip: context.t('common.refresh'),
             onPressed: state.busy
                 ? null
@@ -127,6 +132,14 @@ class _AppShellState extends State<AppShell> {
           NavigationDrawerDestination(icon: Icon(destination.icon), label: Text(context.t(destination.labelKey))),
         const Divider(),
         ListTile(
+          leading: const Icon(Icons.swap_horiz),
+          title: Text(context.t('nav.switchPanel')),
+          onTap: () {
+            Navigator.pop(context);
+            if (mounted) _showPanelSwitcher(this.context);
+          },
+        ),
+        ListTile(
           leading: const Icon(Icons.logout),
           title: Text(context.t('nav.logout')),
           onTap: () async {
@@ -136,6 +149,65 @@ class _AppShellState extends State<AppShell> {
           },
         ),
       ],
+    );
+  }
+
+  Future<void> _showPanelSwitcher(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => Consumer<AppState>(
+        builder: (context, state, _) {
+          final activeId = state.profile?.id;
+          return SafeArea(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  child: Text(
+                    context.t('panelSwitcher.title'),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                for (final saved in state.profiles)
+                  ListTile(
+                    leading: Icon(saved.id == activeId ? Icons.check_circle : Icons.dns_outlined),
+                    title: Text(saved.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(saved.normalizedBaseUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    enabled: !state.busy && saved.id != activeId,
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      try {
+                        await state.switchProfile(saved);
+                        if (context.mounted) showMessage(context, context.tr('panelSwitcher.connected', args: {'name': saved.name}));
+                      } catch (exception) {
+                        if (context.mounted) showMessage(context, exception.toString(), error: true);
+                      }
+                    },
+                  ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.add_link),
+                  title: Text(context.t('panelSwitcher.add')),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    state.prepareNewConnection();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text(context.t('panelSwitcher.reconfigure')),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    state.reconfigure();
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
