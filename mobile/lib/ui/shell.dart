@@ -46,8 +46,11 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 920;
     final state = context.watch<AppState>();
+    final activePanelKey = state.profile?.id.isNotEmpty == true
+        ? state.profile!.id
+        : state.profile?.normalizedBaseUrl ?? '';
     final body = KeyedSubtree(
-      key: ValueKey(selected),
+      key: ValueKey('$activePanelKey:$selected'),
       child: destinations[selected].builder(context),
     );
 
@@ -56,11 +59,6 @@ class _AppShellState extends State<AppShell> {
         title: Text(context.t(destinations[selected].labelKey)),
         centerTitle: !wide,
         actions: [
-          IconButton(
-            tooltip: context.t('nav.switchPanel'),
-            onPressed: state.busy ? null : () => _showPanelSwitcher(context),
-            icon: const Icon(Icons.swap_horiz),
-          ),
           IconButton(
             tooltip: context.t('common.refresh'),
             onPressed: state.busy
@@ -77,7 +75,7 @@ class _AppShellState extends State<AppShell> {
           ),
         ],
       ),
-      drawer: wide ? null : _drawer(context),
+      drawer: wide ? null : _drawer(context, state),
       body: Row(
         children: [
           if (wide)
@@ -85,13 +83,29 @@ class _AppShellState extends State<AppShell> {
               extended: MediaQuery.sizeOf(context).width >= 1180,
               selectedIndex: selected,
               onDestinationSelected: (index) => setState(() => selected = index),
-              leading: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: CircleAvatar(child: Icon(Icons.shield_outlined)),
+              leading: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircleAvatar(child: Icon(Icons.shield_outlined)),
+                    const SizedBox(height: 8),
+                    IconButton(
+                      tooltip: context.t('nav.switchPanel'),
+                      onPressed: state.busy
+                          ? null
+                          : () => _showPanelSwitcher(context),
+                      icon: const Icon(Icons.swap_horiz),
+                    ),
+                  ],
+                ),
               ),
               destinations: [
                 for (final destination in destinations)
-                  NavigationRailDestination(icon: Icon(destination.icon), label: Text(context.t(destination.labelKey))),
+                  NavigationRailDestination(
+                    icon: Icon(destination.icon),
+                    label: Text(context.t(destination.labelKey)),
+                  ),
               ],
             ),
           Expanded(child: body),
@@ -100,8 +114,7 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _drawer(BuildContext context) {
-    final state = context.read<AppState>();
+  Widget _drawer(BuildContext context, AppState state) {
     return NavigationDrawer(
       selectedIndex: selected,
       onDestinationSelected: (index) {
@@ -119,26 +132,36 @@ class _AppShellState extends State<AppShell> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('S-UI Next', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      'S-UI Next',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
                     Text(state.profile?.name ?? '', overflow: TextOverflow.ellipsis),
                   ],
                 ),
+              ),
+              IconButton(
+                tooltip: context.t('nav.switchPanel'),
+                onPressed: state.busy
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        if (mounted) _showPanelSwitcher(this.context);
+                      },
+                icon: const Icon(Icons.swap_horiz),
               ),
             ],
           ),
         ),
         const Divider(),
         for (final destination in destinations)
-          NavigationDrawerDestination(icon: Icon(destination.icon), label: Text(context.t(destination.labelKey))),
+          NavigationDrawerDestination(
+            icon: Icon(destination.icon),
+            label: Text(context.t(destination.labelKey)),
+          ),
         const Divider(),
-        ListTile(
-          leading: const Icon(Icons.swap_horiz),
-          title: Text(context.t('nav.switchPanel')),
-          onTap: () {
-            Navigator.pop(context);
-            if (mounted) _showPanelSwitcher(this.context);
-          },
-        ),
         ListTile(
           leading: const Icon(Icons.logout),
           title: Text(context.t('nav.logout')),

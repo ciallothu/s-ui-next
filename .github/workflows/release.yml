@@ -204,5 +204,5 @@ jobs:
           tag: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
           file: s-ui-next-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
           asset_name: s-ui-next-${{ env.BUILD_VERSION }}-linux-${{ matrix.platform }}.tar.gz
-          prerelease: true
+          prerelease: false
           overwrite: true

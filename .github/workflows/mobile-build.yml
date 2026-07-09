@@ -44,6 +44,32 @@ jobs:
           sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$RUNNER_TEMP/sui-mobile/android/app/src/main/AndroidManifest.xml"
           sed -i 's/android:label="sui_mobile"/android:label="S-UI Next"/' "$RUNNER_TEMP/sui-mobile/android/app/src/main/AndroidManifest.xml"
 
+      - name: Stamp app version from release tag
+        working-directory: ${{ runner.temp }}/sui-mobile
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          pubspec = pathlib.Path("pubspec.yaml")
+          content = pubspec.read_text()
+          tag = os.environ["BUILD_VERSION"]
+          version = tag[1:] if tag.startswith("v") else tag
+          version = version.split("-", 1)[0]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              current = re.search(r"^version:\s*(\d+\.\d+\.\d+)(?:\+\d+)?", content, flags=re.MULTILINE)
+              version = current.group(1) if current else "1.0.0"
+
+          build_number = os.environ.get("GITHUB_RUN_NUMBER", "1")
+          content = re.sub(r"^version:\s*.*$", f"version: {version}+{build_number}", content, flags=re.MULTILINE)
+          pubspec.write_text(content)
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"APP_VERSION={version}\n")
+              env.write(f"APP_BUILD_NUMBER={build_number}\n")
+          PY
+
       - name: Resolve dependencies and icons
         working-directory: ${{ runner.temp }}/sui-mobile
         run: |
@@ -52,7 +78,7 @@ jobs:
 
       - name: Build Android arm64 APK
         working-directory: ${{ runner.temp }}/sui-mobile
-        run: flutter build apk --release --target-platform android-arm64 --split-per-abi
+        run: flutter build apk --release --target-platform android-arm64 --split-per-abi --build-name "$APP_VERSION" --build-number "$APP_BUILD_NUMBER"
 
       - name: Name Android package with version
         run: cp "$RUNNER_TEMP/sui-mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk" "$RUNNER_TEMP/s-ui-next-${BUILD_VERSION}-android-arm64.apk"
@@ -73,7 +99,7 @@ jobs:
           tag: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
           file: ${{ runner.temp }}/s-ui-next-${{ env.BUILD_VERSION }}-android-arm64.apk
           asset_name: s-ui-next-${{ env.BUILD_VERSION }}-android-arm64.apk
-          prerelease: true
+          prerelease: false
           overwrite: true
 
   iphone-arm64:
@@ -106,6 +132,32 @@ jobs:
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/g' "$RUNNER_TEMP/sui-mobile/ios/Runner.xcodeproj/project.pbxproj"
           sed -i '' 's/<string>13.0<\/string>/<string>14.0<\/string>/' "$RUNNER_TEMP/sui-mobile/ios/Flutter/AppFrameworkInfo.plist"
 
+      - name: Stamp app version from release tag
+        working-directory: ${{ runner.temp }}/sui-mobile
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          pubspec = pathlib.Path("pubspec.yaml")
+          content = pubspec.read_text()
+          tag = os.environ["BUILD_VERSION"]
+          version = tag[1:] if tag.startswith("v") else tag
+          version = version.split("-", 1)[0]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              current = re.search(r"^version:\s*(\d+\.\d+\.\d+)(?:\+\d+)?", content, flags=re.MULTILINE)
+              version = current.group(1) if current else "1.0.0"
+
+          build_number = os.environ.get("GITHUB_RUN_NUMBER", "1")
+          content = re.sub(r"^version:\s*.*$", f"version: {version}+{build_number}", content, flags=re.MULTILINE)
+          pubspec.write_text(content)
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"APP_VERSION={version}\n")
+              env.write(f"APP_BUILD_NUMBER={build_number}\n")
+          PY
+
       - name: Resolve dependencies and icons
         working-directory: ${{ runner.temp }}/sui-mobile
         run: |
@@ -114,7 +166,7 @@ jobs:
 
       - name: Build iPhone arm64 without signing
         working-directory: ${{ runner.temp }}/sui-mobile
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --build-name "$APP_VERSION" --build-number "$APP_BUILD_NUMBER"
 
       - name: Package unsigned IPA
         working-directory: ${{ runner.temp }}/sui-mobile
@@ -140,5 +192,5 @@ jobs:
           tag: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
           file: ${{ runner.temp }}/sui-mobile/build/ios/ipa/s-ui-next-${{ env.BUILD_VERSION }}-iphone-arm64-unsigned.ipa
           asset_name: s-ui-next-${{ env.BUILD_VERSION }}-iphone-arm64-unsigned.ipa
-          prerelease: true
+          prerelease: false
           overwrite: true
