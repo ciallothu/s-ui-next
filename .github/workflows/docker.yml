@@ -11,6 +11,8 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
+  CRONET_GO_VERSION: "98d539ce67568fb911654e66a14cf4247ed833ec"
+  CRONET_GO_REPO: https://github.com/sagernet/cronet-go.git
 
 jobs:
   frontend-build:
@@ -37,15 +39,16 @@ jobs:
 
   build:
     needs: frontend-build
+    name: build-${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { platform: linux/amd64, runner: ubuntu-24.04, qemu: false }
-          - { platform: linux/386, runner: ubuntu-24.04, qemu: true }
-          - { platform: linux/arm64/v8, runner: ubuntu-24.04-arm, qemu: false }
-          - { platform: linux/arm/v7, runner: ubuntu-24.04, qemu: true }
-          - { platform: linux/arm/v6, runner: ubuntu-24.04, qemu: true }
+          - { name: amd64, platform: linux/amd64, runner: ubuntu-24.04, qemu: false, cross: false, dockerfile: Dockerfile.frontend-artifact }
+          - { name: "386", platform: linux/386, runner: ubuntu-24.04, qemu: true, cross: false, dockerfile: Dockerfile.frontend-artifact }
+          - { name: arm64, platform: linux/arm64/v8, runner: ubuntu-24.04-arm, qemu: false, cross: false, dockerfile: Dockerfile.frontend-artifact }
+          - { name: armv7, platform: linux/arm/v7, runner: ubuntu-24.04, qemu: true, cross: true, arch: arm, goarm: "7", dockerfile: Dockerfile.prebuilt }
+          - { name: armv6, platform: linux/arm/v6, runner: ubuntu-24.04, qemu: true, cross: true, arch: arm, goarm: "6", dockerfile: Dockerfile.prebuilt }
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
@@ -60,6 +63,77 @@ jobs:
           platform="${{ matrix.platform }}"
           echo "Building $platform on $(uname -m)"
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Set up Go for cross compilation
+        if: matrix.cross
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version-file: go.mod
+
+      - name: Prepare embedded frontend
+        if: matrix.cross
+        run: |
+          rm -rf web/html
+          mkdir -p web/html
+          cp -R frontend_dist/. web/html/
+
+      - name: Clone Cronet cross toolchain
+        if: matrix.cross
+        run: |
+          set -e
+          git init ~/cronet-go
+          git -C ~/cronet-go remote add origin "${{ env.CRONET_GO_REPO }}"
+          git -C ~/cronet-go fetch --depth=1 origin "${{ env.CRONET_GO_VERSION }}"
+          git -C ~/cronet-go checkout FETCH_HEAD
+          git -C ~/cronet-go submodule update --init --recursive --depth=1
+
+      - name: Regenerate Cronet sysroot keyring
+        if: matrix.cross
+        run: |
+          set -e
+          rm -f ~/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg
+          cd ~/cronet-go
+          GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
+
+      - name: Restore Cronet cross toolchain
+        if: matrix.cross
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/cronet-go/naiveproxy/src/third_party/llvm-build/
+            ~/cronet-go/naiveproxy/src/gn/out/
+            ~/cronet-go/naiveproxy/src/chrome/build/pgo_profiles/
+            ~/cronet-go/naiveproxy/src/out/sysroot-build/
+          key: chromium-toolchain-${{ matrix.name }}-musl-${{ env.CRONET_GO_VERSION }}
+
+      - name: Configure Cronet cross toolchain
+        if: matrix.cross
+        run: |
+          set -e
+          cd ~/cronet-go
+          go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl download-toolchain
+          go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl env | while IFS= read -r line; do
+            line="${line#export }"
+            [[ -z "$line" ]] && continue
+            echo "$line" >> "$GITHUB_ENV"
+          done
+          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+          echo "GOOS=linux" >> "$GITHUB_ENV"
+          echo "GOARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
+          echo "GOARM=${{ matrix.goarm }}" >> "$GITHUB_ENV"
+
+      - name: Cross-compile static backend
+        if: matrix.cross
+        run: |
+          set -e
+          BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl"
+          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static'" -tags "$BUILD_TAGS" -o sui main.go
+          file sui
+          ldd sui 2>/dev/null && exit 1 || echo "Static binary confirmed"
+          mkdir -p docker_artifacts
+          mv sui docker_artifacts/s-ui-next-bin
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v6
@@ -92,7 +166,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.frontend-artifact
+          file: ${{ matrix.dockerfile }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ env.IMAGE_NAME }}

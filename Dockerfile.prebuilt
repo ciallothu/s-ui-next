@@ -1,0 +1,8 @@
+FROM alpine
+LABEL org.opencontainers.image.authors="alireza7@gmail.com"
+ENV TZ=Asia/Tehran
+WORKDIR /app
+RUN set -ex && apk add --no-cache --upgrade bash tzdata ca-certificates nftables
+COPY docker_artifacts/s-ui-next-bin /app/sui
+COPY entrypoint.sh /app/
+ENTRYPOINT [ "./entrypoint.sh" ]
