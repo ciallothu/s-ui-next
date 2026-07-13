@@ -67,6 +67,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify Go module metadata
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
       - name: Format check
         run: |
           files=$(git ls-files '*.go' | xargs gofmt -l)

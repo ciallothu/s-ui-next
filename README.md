@@ -11,7 +11,7 @@
 
 S-UI Next is a downstream project based on [alireza0/s-ui](https://github.com/alireza0/s-ui). It keeps the original panel and database model while adding a versioned API, Android and iPhone management apps, stronger administrator authentication, searchable traffic and connection records, safer subscription links, and transactional WireGuard management.
 
-The embedded core currently follows `sing-box v1.13.12`. Existing Web management, API v2, database, and subscription interfaces remain available, so an existing S-UI installation can be migrated without rebuilding its configuration from scratch.
+The embedded core currently follows `sing-box v1.13.14`. Existing Web management, API v2, database, and subscription interfaces remain available, so an existing S-UI installation can be migrated without rebuilding its configuration from scratch.
 
 > Use this project only where it is legal to do so. You are responsible for the configuration you deploy and the traffic carried by it.
 

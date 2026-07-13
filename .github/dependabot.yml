@@ -4,6 +4,13 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      sing-box-stack:
+        patterns:
+          - "github.com/sagernet/sing"
+          - "github.com/sagernet/sing-*"
+          - "github.com/sagernet/cronet-go*"
+          - "github.com/quic-go/quic-go"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

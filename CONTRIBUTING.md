@@ -8,6 +8,7 @@ Thank you for your interest in contributing to S-UI Next. This document explains
 - [Development Environment Setup](#development-environment-setup)
 - [Coding Conventions and Style Guide](#coding-conventions-and-style-guide)
 - [Testing](#testing)
+- [Upstream Maintenance](#upstream-maintenance)
 - [Features That Need Help](#features-that-need-help)
 - [Pull Request Process](#pull-request-process)
 - [Adding This Guide in Your Repository](#adding-this-guide-in-your-repository)
@@ -180,6 +181,12 @@ When adding new features, place code in the appropriate layer (handler → servi
 go vet ./...
 # Optional: staticcheck, golangci-lint, etc.
 ```
+
+---
+
+## Upstream Maintenance
+
+sing-box and upstream S-UI updates are reviewed as coordinated compatibility changes. See [docs/upstream-maintenance.md](docs/upstream-maintenance.md) for the tracked sources, version policy, and release checks.
 
 ---
 
