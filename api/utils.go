@@ -19,13 +19,14 @@ type Msg struct {
 func getRemoteIp(c *gin.Context) string {
 	value := c.GetHeader("X-Forwarded-For")
 	if value != "" {
-		ips := strings.Split(value, ",")
-		return ips[0]
-	} else {
-		addr := c.Request.RemoteAddr
-		ip, _, _ := net.SplitHostPort(addr)
-		return ip
+		for _, candidate := range strings.Split(value, ",") {
+			candidate = strings.TrimSpace(candidate)
+			if net.ParseIP(candidate) != nil {
+				return candidate
+			}
+		}
 	}
+	return directPeerIP(c)
 }
 
 func getHostname(c *gin.Context) string {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ciallothu/s-ui-next/core"
@@ -18,7 +19,7 @@ import (
 )
 
 var (
-	LastUpdate          int64
+	LastUpdate          atomic.Int64
 	corePtr             *core.Core
 	startCoreMu         sync.Mutex
 	startCoreInProgress bool
@@ -176,39 +177,6 @@ func (s *ConfigService) restartCoreWithRaw(config []byte) error {
 	return nil
 }
 
-func (s *ConfigService) restartCoreWithConfig(config json.RawMessage) error {
-	startCoreMu.Lock()
-	if startCoreInProgress {
-		startCoreMu.Unlock()
-		return nil
-	}
-	startCoreInProgress = true
-	startCoreMu.Unlock()
-	defer func() {
-		startCoreMu.Lock()
-		startCoreInProgress = false
-		startCoreMu.Unlock()
-	}()
-
-	if corePtr.IsRunning() {
-		if err := corePtr.Stop(); err != nil {
-			logger.Error("restart sing-box err (stop):", err.Error())
-			return err
-		}
-	}
-	rawConfig, err := s.GetConfig(string(config))
-	if err != nil {
-		logger.Error("restart sing-box err (get config):", err.Error())
-		return err
-	}
-	if err := corePtr.Start(*rawConfig); err != nil {
-		logger.Error("restart sing-box err (start):", err.Error())
-		return err
-	}
-	logger.Info("sing-box restarted with new config")
-	return nil
-}
-
 func (s *ConfigService) StopCore() error {
 	err := corePtr.Stop()
 	if err != nil {
@@ -232,24 +200,57 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 	return s.SaveWithApply(obj, act, data, initUsers, loginUser, hostname, true)
 }
 
-func (s *ConfigService) SaveWithApply(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string, apply bool) ([]string, error) {
+func (s *ConfigService) SaveWithApply(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string, apply bool) (objs []string, err error) {
 	if obj == "endpoints" {
 		return s.saveEndpointWithApply(act, data, loginUser, apply)
 	}
-	var err error
-	var objs []string = []string{obj}
+	if obj == "config" {
+		return s.saveConfigWithApply(act, data, loginUser, apply)
+	}
+	objs = []string{obj}
+	var changeTime int64
+	var previousRuntimeConfig *[]byte
+	mayMutateRuntime := obj == "clients" || obj == "tls" || obj == "inbounds" || obj == "outbounds" || obj == "services"
+	if mayMutateRuntime && corePtr != nil && corePtr.IsRunning() {
+		previousRuntimeConfig, err = s.GetConfig("")
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	db := database.GetDB()
 	tx := db.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
 	defer func() {
-		if err == nil {
-			tx.Commit()
-			// Try to start core if it is not running
-			if !corePtr.IsRunning() {
-				s.StartCore()
+		if err != nil {
+			_ = tx.Rollback().Error
+			if previousRuntimeConfig != nil {
+				if restoreErr := s.restartCoreWithRaw(*previousRuntimeConfig); restoreErr != nil {
+					err = common.NewErrorf("save failed: %v; restoring the previous runtime failed: %v", err, restoreErr)
+				}
 			}
-		} else {
-			tx.Rollback()
+			return
+		}
+		if commitErr := tx.Commit().Error; commitErr != nil {
+			_ = tx.Rollback().Error
+			objs = nil
+			err = commitErr
+			if previousRuntimeConfig != nil {
+				if restoreErr := s.restartCoreWithRaw(*previousRuntimeConfig); restoreErr != nil {
+					err = common.NewErrorf("database commit failed: %v; restoring the previous runtime failed: %v", commitErr, restoreErr)
+				}
+			}
+			return
+		}
+		if changeTime > 0 {
+			LastUpdate.Store(changeTime)
+		}
+		if apply && corePtr != nil && !corePtr.IsRunning() {
+			if startErr := s.StartCore(); startErr != nil {
+				logger.Warning("saved configuration but failed to start sing-box: ", startErr)
+			}
 		}
 	}()
 
@@ -274,14 +275,6 @@ func (s *ConfigService) SaveWithApply(obj string, act string, data json.RawMessa
 		err = s.OutboundService.Save(tx, act, data)
 	case "services":
 		err = s.ServicesService.Save(tx, act, data)
-	case "config":
-		err = s.SettingService.SaveConfig(tx, data)
-		if err != nil {
-			return nil, err
-		}
-		configData := make(json.RawMessage, len(data))
-		copy(configData, data)
-		go func() { _ = s.restartCoreWithConfig(configData) }()
 	case "settings":
 		err = s.SettingService.Save(tx, data)
 	default:
@@ -302,10 +295,75 @@ func (s *ConfigService) SaveWithApply(obj string, act string, data json.RawMessa
 	if err != nil {
 		return nil, err
 	}
-
-	LastUpdate = time.Now().Unix()
+	changeTime = dt
 
 	return objs, nil
+}
+
+func (s *ConfigService) saveConfigWithApply(act string, data json.RawMessage, loginUser string, apply bool) ([]string, error) {
+	if corePtr == nil {
+		return nil, common.NewError("sing-box core is not initialized")
+	}
+	oldConfig, err := s.GetConfig("")
+	if err != nil {
+		return nil, err
+	}
+	wasRunning := corePtr.IsRunning()
+	tx := database.GetDB().Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	rollback := func() { _ = tx.Rollback().Error }
+	if err = s.SettingService.SaveConfig(tx, data); err != nil {
+		rollback()
+		return nil, err
+	}
+	stagedConfig, err := s.getConfigWithDB(tx, "")
+	if err != nil {
+		rollback()
+		return nil, err
+	}
+	if err = corePtr.ValidateConfig(*stagedConfig); err != nil {
+		rollback()
+		return nil, common.NewErrorf("sing-box configuration check failed: %v", err)
+	}
+	dt := time.Now().Unix()
+	if err = tx.Create(&model.Changes{
+		DateTime: dt, Actor: loginUser, Key: "config", Action: act, Obj: redactChangeData(data),
+	}).Error; err != nil {
+		rollback()
+		return nil, err
+	}
+	if apply {
+		if err = s.restartCoreWithRaw(*stagedConfig); err != nil {
+			rollback()
+			if restoreErr := s.restoreRuntimeState(*oldConfig, wasRunning); restoreErr != nil {
+				return nil, common.NewErrorf("apply failed: %v; restoring the previous runtime also failed: %v", err, restoreErr)
+			}
+			return nil, common.NewErrorf("apply failed and the previous runtime state was restored: %v", err)
+		}
+	}
+	if err = tx.Commit().Error; err != nil {
+		rollback()
+		if apply {
+			if restoreErr := s.restoreRuntimeState(*oldConfig, wasRunning); restoreErr != nil {
+				return nil, common.NewErrorf("database commit failed: %v; restoring the previous runtime also failed: %v", err, restoreErr)
+			}
+		}
+		return nil, err
+	}
+	LastUpdate.Store(dt)
+	return []string{"config"}, nil
+}
+
+func (s *ConfigService) restoreRuntimeState(config []byte, wasRunning bool) error {
+	if wasRunning {
+		return s.restartCoreWithRaw(config)
+	}
+	if corePtr != nil && corePtr.IsRunning() {
+		return corePtr.Stop()
+	}
+	return nil
 }
 
 func (s *ConfigService) saveEndpointWithApply(act string, data json.RawMessage, loginUser string, apply bool) ([]string, error) {
@@ -313,6 +371,7 @@ func (s *ConfigService) saveEndpointWithApply(act string, data json.RawMessage, 
 	if oldConfigErr != nil {
 		return nil, oldConfigErr
 	}
+	wasRunning := corePtr != nil && corePtr.IsRunning()
 	tx := database.GetDB().Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -340,19 +399,20 @@ func (s *ConfigService) saveEndpointWithApply(act string, data json.RawMessage, 
 	if apply {
 		if err = s.restartCoreWithRaw(*stagedConfig); err != nil {
 			rollback()
-			if rollbackErr := s.restartCoreWithRaw(*oldConfig); rollbackErr != nil {
+			if rollbackErr := s.restoreRuntimeState(*oldConfig, wasRunning); rollbackErr != nil {
 				return nil, common.NewErrorf("apply failed: %v; restoring the previous runtime also failed: %v", err, rollbackErr)
 			}
-			return nil, common.NewErrorf("apply failed and the previous runtime was restored: %v", err)
+			return nil, common.NewErrorf("apply failed and the previous runtime state was restored: %v", err)
 		}
 	}
 	if err = tx.Commit().Error; err != nil {
+		rollback()
 		if apply {
-			_ = s.restartCoreWithRaw(*oldConfig)
+			_ = s.restoreRuntimeState(*oldConfig, wasRunning)
 		}
 		return nil, err
 	}
-	LastUpdate = time.Now().Unix()
+	LastUpdate.Store(time.Now().Unix())
 	return []string{"endpoints"}, nil
 }
 
@@ -470,18 +530,21 @@ func (s *ConfigService) CheckChanges(lu string) (bool, error) {
 	if lu == "" {
 		return true, nil
 	}
-	if LastUpdate == 0 {
-		db := database.GetDB()
-		var count int64
-		err := db.Model(model.Changes{}).Where("date_time > " + lu).Count(&count).Error
-		if err == nil {
-			LastUpdate = time.Now().Unix()
-		}
-		return count > 0, err
-	} else {
-		intLu, err := strconv.ParseInt(lu, 10, 64)
-		return LastUpdate > intLu, err
+	intLu, err := strconv.ParseInt(lu, 10, 64)
+	if err != nil || intLu < 0 {
+		return false, common.NewError("invalid last update value")
 	}
+	lastUpdate := LastUpdate.Load()
+	if lastUpdate == 0 {
+		db := database.GetDB()
+		if err := db.Model(model.Changes{}).Select("COALESCE(MAX(date_time), 0)").Scan(&lastUpdate).Error; err != nil {
+			return false, err
+		}
+		if lastUpdate > 0 {
+			LastUpdate.Store(lastUpdate)
+		}
+	}
+	return lastUpdate > intLu, nil
 }
 
 func (s *ConfigService) GetChanges(actor string, chngKey string, count string) []model.Changes {

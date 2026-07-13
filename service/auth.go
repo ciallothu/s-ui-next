@@ -40,8 +40,21 @@ type passkeyPending struct {
 }
 
 var (
-	oidcPendingStates      sync.Map
-	passkeyPendingSessions sync.Map
+	oidcPendingStates = struct {
+		sync.Mutex
+		entries     map[string]oidcPending
+		lastCleanup time.Time
+	}{entries: make(map[string]oidcPending)}
+	passkeyPendingSessions = struct {
+		sync.Mutex
+		entries     map[string]passkeyPending
+		lastCleanup time.Time
+	}{entries: make(map[string]passkeyPending)}
+)
+
+const (
+	maxPendingAuthSessions = 1024
+	pendingCleanupPeriod   = time.Minute
 )
 
 type OIDCStart struct {
@@ -101,30 +114,82 @@ func containsString(values []string, wanted string) bool {
 	return false
 }
 
+func storeOIDCPending(key string, pending oidcPending) error {
+	now := time.Now()
+	oidcPendingStates.Lock()
+	defer oidcPendingStates.Unlock()
+	if oidcPendingStates.lastCleanup.IsZero() || now.Sub(oidcPendingStates.lastCleanup) >= pendingCleanupPeriod || len(oidcPendingStates.entries) >= maxPendingAuthSessions {
+		for entryKey, entry := range oidcPendingStates.entries {
+			if !now.Before(entry.Expiry) {
+				delete(oidcPendingStates.entries, entryKey)
+			}
+		}
+		oidcPendingStates.lastCleanup = now
+	}
+	if len(oidcPendingStates.entries) >= maxPendingAuthSessions {
+		return common.NewError("too many pending OIDC sessions")
+	}
+	oidcPendingStates.entries[key] = pending
+	return nil
+}
+
+func takeOIDCPending(key string) (oidcPending, bool) {
+	oidcPendingStates.Lock()
+	defer oidcPendingStates.Unlock()
+	pending, ok := oidcPendingStates.entries[key]
+	if ok {
+		delete(oidcPendingStates.entries, key)
+	}
+	return pending, ok
+}
+
+func storePasskeyPending(key string, pending passkeyPending) error {
+	now := time.Now()
+	passkeyPendingSessions.Lock()
+	defer passkeyPendingSessions.Unlock()
+	if passkeyPendingSessions.lastCleanup.IsZero() || now.Sub(passkeyPendingSessions.lastCleanup) >= pendingCleanupPeriod || len(passkeyPendingSessions.entries) >= maxPendingAuthSessions {
+		for entryKey, entry := range passkeyPendingSessions.entries {
+			if !now.Before(entry.Expiry) {
+				delete(passkeyPendingSessions.entries, entryKey)
+			}
+		}
+		passkeyPendingSessions.lastCleanup = now
+	}
+	if len(passkeyPendingSessions.entries) >= maxPendingAuthSessions {
+		return common.NewError("too many pending passkey sessions")
+	}
+	passkeyPendingSessions.entries[key] = pending
+	return nil
+}
+
+func takePasskeyPending(key string) (passkeyPending, bool) {
+	passkeyPendingSessions.Lock()
+	defer passkeyPendingSessions.Unlock()
+	pending, ok := passkeyPendingSessions.entries[key]
+	if ok {
+		delete(passkeyPendingSessions.entries, key)
+	}
+	return pending, ok
+}
+
 func (s *AuthService) BeginOIDC(ctx context.Context) (*OIDCStart, error) {
 	_, config, err := s.oidcConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	state, nonce, verifier := common.Random(40), common.Random(40), oauth2.GenerateVerifier()
-	now := time.Now()
-	oidcPendingStates.Range(func(key, value interface{}) bool {
-		if pending, ok := value.(oidcPending); ok && now.After(pending.Expiry) {
-			oidcPendingStates.Delete(key)
-		}
-		return true
-	})
-	oidcPendingStates.Store(state, oidcPending{Nonce: nonce, Verifier: verifier, Expiry: time.Now().Add(10 * time.Minute)})
+	if err := storeOIDCPending(state, oidcPending{Nonce: nonce, Verifier: verifier, Expiry: time.Now().Add(10 * time.Minute)}); err != nil {
+		return nil, err
+	}
 	url := config.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
 	return &OIDCStart{URL: url}, nil
 }
 
 func (s *AuthService) FinishOIDC(ctx context.Context, state, code string) (string, error) {
-	raw, ok := oidcPendingStates.LoadAndDelete(state)
+	pending, ok := takeOIDCPending(state)
 	if !ok {
 		return "", common.NewError("invalid or expired OIDC state")
 	}
-	pending := raw.(oidcPending)
 	if time.Now().After(pending.Expiry) {
 		return "", common.NewError("OIDC state expired")
 	}
@@ -339,25 +404,19 @@ func (s *AuthService) loadWebUser(username string) (*authWebUser, error) {
 	return &authWebUser{User: user, Credentials: credentials}, nil
 }
 
-func storePasskeySession(username string, data *webauthn.SessionData) string {
-	now := time.Now()
-	passkeyPendingSessions.Range(func(key, value interface{}) bool {
-		if pending, ok := value.(passkeyPending); ok && now.After(pending.Expiry) {
-			passkeyPendingSessions.Delete(key)
-		}
-		return true
-	})
+func storePasskeySession(username string, data *webauthn.SessionData) (string, error) {
 	id := common.Random(48)
-	passkeyPendingSessions.Store(id, passkeyPending{Username: username, Data: data, Expiry: time.Now().Add(5 * time.Minute)})
-	return id
+	if err := storePasskeyPending(id, passkeyPending{Username: username, Data: data, Expiry: time.Now().Add(5 * time.Minute)}); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 func takePasskeySession(id string) (passkeyPending, error) {
-	raw, ok := passkeyPendingSessions.LoadAndDelete(id)
+	pending, ok := takePasskeyPending(id)
 	if !ok {
 		return passkeyPending{}, common.NewError("passkey ceremony expired")
 	}
-	pending := raw.(passkeyPending)
 	if time.Now().After(pending.Expiry) {
 		return passkeyPending{}, common.NewError("passkey ceremony expired")
 	}
@@ -377,37 +436,46 @@ func (s *AuthService) BeginPasskeyRegistration(username string, request *http.Re
 	if err != nil {
 		return nil, "", err
 	}
-	return creation, storePasskeySession(username, data), nil
+	sessionID, err := storePasskeySession(username, data)
+	return creation, sessionID, err
 }
 
-func (s *AuthService) FinishPasskeyRegistration(username, sessionID, name string, request *http.Request) error {
+func (s *AuthService) FinishPasskeyRegistration(username, sessionID, requestedName string, request *http.Request) (string, error) {
 	pending, err := takePasskeySession(sessionID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if pending.Username != username {
-		return common.NewError("passkey user mismatch")
+		return "", common.NewError("passkey user mismatch")
 	}
 	w, err := s.webAuthn(request)
 	if err != nil {
-		return err
+		return "", err
 	}
 	user, err := s.loadWebUser(username)
 	if err != nil {
-		return err
+		return "", err
 	}
 	credential, err := w.FinishRegistration(user, *pending.Data, request)
 	if err != nil {
-		return err
+		return "", err
 	}
 	encoded, err := json.Marshal(credential)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if strings.TrimSpace(name) == "" {
-		name = "Passkey"
+	platform := ""
+	if request != nil && request.URL != nil {
+		platform = request.URL.Query().Get("platform")
 	}
-	return database.GetDB().Create(&model.PasskeyCredential{UserId: user.User.Id, Name: name, Credential: encoded, CreatedAt: time.Now().Unix()}).Error
+	name, err := resolvePasskeyName(credential, requestedName, platform)
+	if err != nil {
+		return "", err
+	}
+	if err := database.GetDB().Create(&model.PasskeyCredential{UserId: user.User.Id, Name: name, Credential: encoded, CreatedAt: time.Now().Unix()}).Error; err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func (s *AuthService) BeginPasskeyLogin(username string, request *http.Request) (interface{}, string, error) {
@@ -426,7 +494,8 @@ func (s *AuthService) BeginPasskeyLogin(username string, request *http.Request) 
 	if err != nil {
 		return nil, "", err
 	}
-	return assertion, storePasskeySession(username, data), nil
+	sessionID, err := storePasskeySession(username, data)
+	return assertion, sessionID, err
 }
 
 func (s *AuthService) FinishPasskeyLogin(sessionID string, request *http.Request) (string, error) {
@@ -474,7 +543,11 @@ func (s *AuthService) DeletePasskey(username, id string) error {
 }
 
 func (s *AuthService) RenamePasskey(username, id, name string) error {
-	name = strings.TrimSpace(name)
+	var err error
+	name, err = normalizePasskeyName(name)
+	if err != nil {
+		return err
+	}
 	if name == "" {
 		return common.NewError("passkey name can not be empty")
 	}

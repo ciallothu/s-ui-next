@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	stdnet "net"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"github.com/ciallothu/s-ui-next/database"
 	"github.com/ciallothu/s-ui-next/service"
 
-	"github.com/shirou/gopsutil/v4/net"
+	gopsnet "github.com/shirou/gopsutil/v4/net"
 )
 
 func resetSetting() {
@@ -138,12 +139,21 @@ func getPublicIP() string {
 				return
 			}
 			defer resp.Body.Close()
-			body, err := io.ReadAll(resp.Body)
+			if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+				ch <- result{"", fmt.Errorf("public IP service returned HTTP %d", resp.StatusCode)}
+				return
+			}
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 128))
 			if err != nil {
 				ch <- result{"", err}
 				return
 			}
-			ch <- result{string(body), nil}
+			ip := stdnet.ParseIP(strings.TrimSpace(string(body)))
+			if ip == nil {
+				ch <- result{"", fmt.Errorf("public IP service returned an invalid address")}
+				return
+			}
+			ch <- result{ip.String(), nil}
 		}(api)
 	}
 
@@ -196,22 +206,45 @@ func getPanelURI() {
 		return
 	}
 	fmt.Println("Local address:")
-	netInterfaces, _ := net.Interfaces()
-	for i := 0; i < len(netInterfaces); i++ {
-		if len(netInterfaces[i].Flags) > 2 && netInterfaces[i].Flags[0] == "up" && netInterfaces[i].Flags[1] != "loopback" {
-			addrs := netInterfaces[i].Addrs
-			for _, address := range addrs {
-				IP := strings.Split(address.Addr, "/")[0]
-				if strings.Contains(address.Addr, ".") {
-					fmt.Println(Proto + IP + PortText + BasePath)
-				} else if address.Addr[0:6] != "fe80::" {
-					fmt.Println(Proto + "[" + IP + "]" + PortText + BasePath)
-				}
+	netInterfaces, err := gopsnet.Interfaces()
+	if err != nil {
+		fmt.Println("Unable to list local interfaces:", err)
+	}
+	for _, networkInterface := range netInterfaces {
+		if !interfaceHasFlag(networkInterface.Flags, "up") || interfaceHasFlag(networkInterface.Flags, "loopback") {
+			continue
+		}
+		for _, address := range networkInterface.Addrs {
+			ipText := strings.SplitN(strings.TrimSpace(address.Addr), "/", 2)[0]
+			if zoneIndex := strings.LastIndex(ipText, "%"); zoneIndex >= 0 {
+				ipText = ipText[:zoneIndex]
 			}
+			ip := stdnet.ParseIP(strings.Trim(ipText, "[]"))
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			host := ip.String()
+			if ip.To4() == nil {
+				host = "[" + host + "]"
+			}
+			fmt.Println(Proto + host + PortText + BasePath)
 		}
 	}
 	pubIP := getPublicIP()
 	if pubIP != "" {
-		fmt.Printf("\nGlobal address:\n%s%s%s\n", Proto, pubIP, PortText+BasePath)
+		host := pubIP
+		if ip := stdnet.ParseIP(pubIP); ip != nil && ip.To4() == nil {
+			host = "[" + ip.String() + "]"
+		}
+		fmt.Printf("\nGlobal address:\n%s%s%s\n", Proto, host, PortText+BasePath)
 	}
+}
+
+func interfaceHasFlag(flags []string, wanted string) bool {
+	for _, flag := range flags {
+		if strings.EqualFold(flag, wanted) {
+			return true
+		}
+	}
+	return false
 }

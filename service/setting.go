@@ -402,7 +402,14 @@ func (s *SettingService) SaveConfig(tx *gorm.DB, config json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	return tx.Model(model.Setting{}).Where("key = ?", "config").Update("value", string(configs)).Error
+	result := tx.Model(model.Setting{}).Where("key = ?", "config").Update("value", string(configs))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return tx.Create(&model.Setting{Key: "config", Value: string(configs)}).Error
+	}
+	return nil
 }
 
 func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
@@ -18,14 +19,26 @@ import (
 
 type UserService struct{}
 
+const (
+	MaxTokenExpiryDays       int64 = 3650
+	MaxTokenDescriptionRunes       = 128
+)
+
 type pendingTOTPEntry struct {
 	Secret string
 	Expiry time.Time
 }
 
 var (
-	pendingTOTP    sync.Map
-	recoveryCodeMu sync.Mutex
+	pendingTOTP       sync.Map
+	recoveryCodeMu    sync.Mutex
+	dummyPasswordHash = func() string {
+		value, err := bcrypt.GenerateFromPassword([]byte("s-ui-next-invalid-password"), bcrypt.DefaultCost)
+		if err != nil {
+			panic("unable to initialize password verifier: " + err.Error())
+		}
+		return string(value)
+	}()
 )
 
 func hashPassword(password string) (string, error) {
@@ -37,7 +50,9 @@ func verifyPassword(stored, password string) bool {
 	if strings.HasPrefix(stored, "$2a$") || strings.HasPrefix(stored, "$2b$") || strings.HasPrefix(stored, "$2y$") {
 		return bcrypt.CompareHashAndPassword([]byte(stored), []byte(password)) == nil
 	}
-	return stored == password
+	matched := subtle.ConstantTimeCompare([]byte(stored), []byte(password)) == 1
+	_ = bcrypt.CompareHashAndPassword([]byte(dummyPasswordHash), []byte(password))
+	return matched
 }
 
 func (s *UserService) GetFirstUser() (*model.User, error) {
@@ -105,6 +120,7 @@ func (s *UserService) CheckPassword(username string, password string, remoteIP s
 		First(user).
 		Error
 	if database.IsNotFound(err) {
+		_ = verifyPassword(dummyPasswordHash, password)
 		return nil, common.NewError("wrong user or password! IP: ", remoteIP)
 	} else if err != nil {
 		logger.Warning("check user err:", err, " IP: ", remoteIP)
@@ -276,10 +292,17 @@ func (s *UserService) GetUserTokens(username string) (*[]model.Tokens, error) {
 }
 
 func (s *UserService) AddToken(username string, expiry int64, desc string) (string, error) {
+	username = strings.TrimSpace(username)
+	desc = strings.TrimSpace(desc)
+	if username == "" {
+		return "", common.NewError("username can not be empty")
+	}
+	if err := ValidateTokenOptions(expiry, desc); err != nil {
+		return "", err
+	}
 	db := database.GetDB()
-	var userId uint
-	err := db.Model(model.User{}).Where("username = ?", username).Select("id").Scan(&userId).Error
-	if err != nil {
+	var user model.User
+	if err := db.Model(model.User{}).Select("id").Where("username = ?", username).First(&user).Error; err != nil {
 		return "", err
 	}
 	if expiry > 0 {
@@ -289,13 +312,23 @@ func (s *UserService) AddToken(username string, expiry int64, desc string) (stri
 		Token:  common.Random(32),
 		Desc:   desc,
 		Expiry: expiry,
-		UserId: userId,
+		UserId: user.Id,
 	}
-	err = db.Create(token).Error
+	err := db.Create(token).Error
 	if err != nil {
 		return "", err
 	}
 	return token.Token, nil
+}
+
+func ValidateTokenOptions(expiryDays int64, description string) error {
+	if expiryDays < 0 || expiryDays > MaxTokenExpiryDays {
+		return common.NewErrorf("expiryDays must be between 0 and %d", MaxTokenExpiryDays)
+	}
+	if len([]rune(strings.TrimSpace(description))) > MaxTokenDescriptionRunes {
+		return common.NewErrorf("token description must be at most %d characters", MaxTokenDescriptionRunes)
+	}
+	return nil
 }
 
 func (s *UserService) DeleteToken(id string) error {

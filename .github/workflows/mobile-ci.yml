@@ -8,6 +8,8 @@ on:
     paths:
       - ".github/workflows/mobile-ci.yml"
       - ".github/workflows/mobile-build.yml"
+      - "frontend"
+      - "frontend/**"
       - "mobile/**"
       - "api/**"
       - "database/**"
@@ -24,6 +26,8 @@ on:
     paths:
       - ".github/workflows/mobile-ci.yml"
       - ".github/workflows/mobile-build.yml"
+      - "frontend"
+      - "frontend/**"
       - "mobile/**"
       - "api/**"
       - "database/**"
@@ -49,7 +53,7 @@ env:
 
 jobs:
   backend-api:
-    name: Validate mobile API
+    name: Validate backend and security
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -65,15 +69,56 @@ jobs:
 
       - name: Format check
         run: |
-          files=$(gofmt -l api/*.go database/*.go database/model/*.go logger/*.go service/*.go sub/*.go util/*.go util/common/*.go web/*.go)
+          files=$(git ls-files '*.go' | xargs gofmt -l)
           if [ -n "$files" ]; then
             echo "The following files need gofmt:"
             echo "$files"
             exit 1
           fi
 
-      - name: Test API packages
-        run: go test ./api ./service ./logger ./sub ./util ./web
+      - name: Test all Go packages
+        run: go test ./...
+
+      - name: Vet all Go packages
+        run: go vet ./...
+
+      - name: Race-check core packages
+        run: go test -race ./api ./database ./middleware ./service ./sub ./util ./web
+
+      - name: Scan Go dependencies and call paths
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+  frontend:
+    name: Validate web frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Audit dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
 
   android-arm64:
     name: Check Android arm64

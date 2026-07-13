@@ -1,9 +1,9 @@
 package sub
 
 import (
+	"fmt"
 	"strings"
 
-	"github.com/ciallothu/s-ui-next/logger"
 	"github.com/ciallothu/s-ui-next/service"
 	"github.com/ciallothu/s-ui-next/util"
 
@@ -120,9 +120,13 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		if t == "selector" || t == "urltest" || t == "direct" {
 			continue
 		}
+		tag, ok := obMap["tag"].(string)
+		if !ok || strings.TrimSpace(tag) == "" {
+			continue
+		}
 
 		proxy := make(map[string]interface{})
-		proxy["name"] = obMap["tag"]
+		proxy["name"] = tag
 		proxy["type"] = t
 
 		server, _ := obMap["server"].(string)
@@ -215,12 +219,10 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		tls, isTls := obMap["tls"].(map[string]interface{})
 		if isTls {
 			tlsEnabled, ok := tls["enabled"].(bool)
-			if ok && !tlsEnabled {
-				isTls = false
-			}
+			isTls = ok && tlsEnabled
 		}
 		if isTls {
-			proxy["tls"] = tls["enabled"]
+			proxy["tls"] = true
 
 			// ALPN if exists
 			if alpn, ok := tls["alpn"].([]interface{}); ok {
@@ -228,15 +230,18 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 			}
 
 			// Add reality if exists
-			if reality, ok := tls["reality"].(map[string]interface{}); ok && reality["enabled"].(bool) {
-				reality_opts := make(map[string]interface{})
-				if pbk, ok := reality["public_key"].(string); ok {
-					reality_opts["public-key"] = pbk
+			if reality, ok := tls["reality"].(map[string]interface{}); ok {
+				realityEnabled, _ := reality["enabled"].(bool)
+				if realityEnabled {
+					reality_opts := make(map[string]interface{})
+					if pbk, ok := reality["public_key"].(string); ok {
+						reality_opts["public-key"] = pbk
+					}
+					if sid, ok := reality["short_id"].(string); ok {
+						reality_opts["short-id"] = sid
+					}
+					proxy["reality-opts"] = reality_opts
 				}
-				if sid, ok := reality["short_id"].(string); ok {
-					reality_opts["short-id"] = sid
-				}
-				proxy["reality-opts"] = reality_opts
 			}
 			if utls, ok := tls["utls"].(map[string]interface{}); ok {
 				if enabled, ok := utls["enabled"].(bool); ok && enabled {
@@ -256,15 +261,20 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				proxy["skip-cert-verify"] = insecure
 			}
 			// ech outbounds
-			if ech, ok := tls["ech"].(map[string]interface{}); ok && ech["enabled"].(bool) {
-				ech_config, _ := ech["config"].([]interface{})
-				ech_string := ""
-				for i := 1; i < len(ech_config)-1; i++ {
-					ech_string += ech_config[i].(string)
-				}
-				proxy["ech-opts"] = map[string]interface{}{
-					"enable": true,
-					"config": ech_string,
+			if ech, ok := tls["ech"].(map[string]interface{}); ok {
+				echEnabled, _ := ech["enabled"].(bool)
+				ech_config, configOK := ech["config"].([]interface{})
+				if echEnabled && configOK {
+					ech_string := ""
+					for i := 1; i < len(ech_config)-1; i++ {
+						if part, ok := ech_config[i].(string); ok {
+							ech_string += part
+						}
+					}
+					proxy["ech-opts"] = map[string]interface{}{
+						"enable": true,
+						"config": ech_string,
+					}
 				}
 			}
 		}
@@ -275,12 +285,12 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 			switch tt {
 			case "http":
 				httpOpts := make(map[string]interface{})
-				if path, ok := transport["path"].([]interface{}); ok {
+				if path, ok := transport["path"].([]interface{}); ok && len(path) > 0 {
 					httpOpts["path"] = path[0]
 				} else if path, ok := transport["path"].(string); ok {
 					httpOpts["path"] = path
 				}
-				if host, ok := transport["host"].([]interface{}); ok {
+				if host, ok := transport["host"].([]interface{}); ok && len(host) > 0 {
 					httpOpts["host"] = host[0]
 				}
 				if isTls {
@@ -354,23 +364,33 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		}
 
 		proxies = append(proxies, proxy)
-		proxyTags = append(proxyTags, obMap["tag"].(string))
+		proxyTags = append(proxyTags, tag)
 	}
 
 	var proxyGroups []map[string]interface{}
 	err := yaml.Unmarshal([]byte(ProxyGroups), &proxyGroups)
 	if err != nil {
-		logger.Error(err.Error())
+		return "", fmt.Errorf("parse built-in proxy groups: %w", err)
+	}
+	if len(proxyGroups) < 2 {
+		return "", fmt.Errorf("built-in proxy groups are incomplete")
 	}
 
 	proxyGroups[1]["proxies"] = proxyTags
-	proxyGroups[0]["proxies"] = append([]string{proxyGroups[1]["name"].(string)}, proxyTags...)
+	autoGroupName, ok := proxyGroups[1]["name"].(string)
+	if !ok || autoGroupName == "" {
+		return "", fmt.Errorf("built-in auto proxy group has no name")
+	}
+	proxyGroups[0]["proxies"] = append([]string{autoGroupName}, proxyTags...)
 
 	// Merge proxies and proxy groups if exist
 	var output map[string]interface{}
 	err = yaml.Unmarshal([]byte(basicConfig), &output)
 	if err != nil {
-		logger.Error(err.Error())
+		return "", fmt.Errorf("parse Clash base configuration: %w", err)
+	}
+	if output == nil {
+		return "", fmt.Errorf("Clash base configuration is empty")
 	}
 
 	if p, ok := output["proxies"].([]interface{}); ok {

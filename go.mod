@@ -1,6 +1,6 @@
 module github.com/ciallothu/s-ui-next
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/coreos/go-oidc/v3 v3.19.0
@@ -207,4 +207,4 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.57.1
+replace github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.59.1

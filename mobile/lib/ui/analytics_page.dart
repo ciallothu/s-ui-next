@@ -471,31 +471,29 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(sheetContext).bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(sheetContext.t('analytics.connectionLog'), style: Theme.of(sheetContext).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              _detailLine(sheetContext, sheetContext.t('logs.level'), item['level']?.toString()),
-              _detailLine(sheetContext, sheetContext.t('logs.time'), item['time']?.toString() ?? formatTimestamp(item['timestamp'])),
-              _detailLine(sheetContext, sheetContext.t('analytics.resource'), '${item['resource']}/${item['protocol']}[${item['tag']}]'),
-              _detailLine(sheetContext, sheetContext.t('analytics.user'), item['user']?.toString()),
-              _detailLine(sheetContext, sheetContext.t('analytics.destination'), item['destination']?.toString()),
-              _detailLine(sheetContext, sheetContext.t('analytics.source'), item['source']?.toString()),
-              ..._endpointDetailWidgets(sheetContext, item),
-              const Divider(height: 24),
-              Text(sheetContext.t('analytics.rawMessage'), style: Theme.of(sheetContext).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * .35),
-                child: SingleChildScrollView(
-                  child: SelectableText(item['message']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace')),
-                ),
-              ),
-            ],
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * .9),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(sheetContext).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(sheetContext.t('analytics.connectionLog'), style: Theme.of(sheetContext).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                _detailLine(sheetContext, sheetContext.t('logs.level'), item['level']?.toString()),
+                _detailLine(sheetContext, sheetContext.t('logs.time'), item['time']?.toString() ?? formatTimestamp(item['timestamp'])),
+                _detailLine(sheetContext, sheetContext.t('analytics.resource'), '${item['resource']}/${item['protocol']}[${item['tag']}]'),
+                _detailLine(sheetContext, sheetContext.t('analytics.user'), item['user']?.toString()),
+                _detailLine(sheetContext, sheetContext.t('analytics.destination'), item['destination']?.toString()),
+                _detailLine(sheetContext, sheetContext.t('analytics.source'), item['source']?.toString()),
+                ..._endpointDetailWidgets(sheetContext, item),
+                const Divider(height: 24),
+                Text(sheetContext.t('analytics.rawMessage'), style: Theme.of(sheetContext).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                SelectableText(item['message']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace')),
+              ],
+            ),
           ),
         ),
       ),

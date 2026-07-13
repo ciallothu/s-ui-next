@@ -9,17 +9,25 @@ import (
 )
 
 func DomainValidator(domain string) gin.HandlerFunc {
+	expectedHost := normalizeHostname(domain)
 	return func(c *gin.Context) {
-		host := c.Request.Host
-		if colonIndex := strings.LastIndex(host, ":"); colonIndex != -1 {
-			host, _, _ = net.SplitHostPort(c.Request.Host)
-		}
-
-		if host != domain {
+		if expectedHost == "" || normalizeHostname(c.Request.Host) != expectedHost {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 
 		c.Next()
 	}
+}
+
+func normalizeHostname(value string) string {
+	value = strings.TrimSpace(value)
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+	value = strings.TrimSuffix(strings.Trim(strings.TrimSpace(value), "[]"), ".")
+	if ip := net.ParseIP(value); ip != nil {
+		return ip.String()
+	}
+	return strings.ToLower(value)
 }

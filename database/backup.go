@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,6 +24,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var importDBMu sync.Mutex
+
 func GetDb(exclude string) ([]byte, error) {
 	exclude_changes, exclude_stats := false, false
 	for _, table := range strings.Split(exclude, ",") {
@@ -32,11 +36,17 @@ func GetDb(exclude string) ([]byte, error) {
 		}
 	}
 
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	dir := filepath.Dir(config.GetDBPath())
+	tempFile, err := os.CreateTemp(dir, ".s-ui-next-backup-*.db")
 	if err != nil {
 		return nil, err
 	}
-	dbPath := filepath.Join(dir, config.GetName()+"_"+time.Now().Format("20060102-200203")+".db")
+	dbPath := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		return nil, err
+	}
+	defer os.Remove(dbPath)
+	defer removeSQLiteSidecars(dbPath)
 
 	backupDb, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
@@ -47,8 +57,6 @@ func GetDb(exclude string) ([]byte, error) {
 			_ = sqlDB.Close()
 		}
 	}()
-	defer os.Remove(dbPath)
-
 	err = backupDb.AutoMigrate(
 		&model.Setting{},
 		&model.Tls{},
@@ -208,6 +216,9 @@ func GetDb(exclude string) ([]byte, error) {
 }
 
 func ImportDB(file multipart.File) error {
+	importDBMu.Lock()
+	defer importDBMu.Unlock()
+
 	// Check if the file is a SQLite database
 	isValidDb, err := IsSQLiteDB(file)
 	if err != nil {
@@ -223,99 +234,154 @@ func ImportDB(file multipart.File) error {
 		return common.NewErrorf("Error resetting file reader: %v", err)
 	}
 
-	// Save the file as temporary file
-	tempPath := fmt.Sprintf("%s.temp", config.GetDBPath())
-	// Remove the existing fallback file (if any) before creating one
-	_, err = os.Stat(tempPath)
-	if err == nil {
-		errRemove := os.Remove(tempPath)
-		if errRemove != nil {
-			return common.NewErrorf("Error removing existing temporary db file: %v", errRemove)
-		}
-	}
-	// Create the temporary file
-	tempFile, err := os.Create(tempPath)
+	dbPath := config.GetDBPath()
+	tempFile, err := os.CreateTemp(filepath.Dir(dbPath), ".s-ui-next-import-*.db")
 	if err != nil {
 		return common.NewErrorf("Error creating temporary db file: %v", err)
 	}
-	defer tempFile.Close()
-
-	// Remove temp file before returning
+	tempPath := tempFile.Name()
 	defer os.Remove(tempPath)
+	defer removeSQLiteSidecars(tempPath)
+	if err := tempFile.Chmod(0o600); err != nil {
+		tempFile.Close()
+		return common.NewErrorf("Error securing temporary db file: %v", err)
+	}
 
-	// Close old DB
-	old_db, _ := db.DB()
-	old_db.Close()
-
-	// Save uploaded file to temporary file
-	_, err = io.Copy(tempFile, file)
-	if err != nil {
+	if _, err = io.Copy(tempFile, file); err != nil {
+		tempFile.Close()
 		return common.NewErrorf("Error saving db: %v", err)
 	}
-
-	// Check if we can init db or not
-	newDb, err := gorm.Open(sqlite.Open(tempPath), &gorm.Config{})
-	if err != nil {
+	if err = tempFile.Sync(); err != nil {
+		tempFile.Close()
+		return common.NewErrorf("Error syncing db: %v", err)
+	}
+	if err = tempFile.Close(); err != nil {
+		return common.NewErrorf("Error closing temporary db: %v", err)
+	}
+	if err = validateSQLiteDatabase(tempPath); err != nil {
 		return common.NewErrorf("Error checking db: %v", err)
 	}
-	newDb_db, _ := newDb.DB()
-	if newDb_db != nil {
-		newDb_db.Close()
-	}
 
-	// Backup the current database for fallback
-	fallbackPath := fmt.Sprintf("%s.backup", config.GetDBPath())
-	// Remove the existing fallback file (if any)
-	_, err = os.Stat(fallbackPath)
-	if err == nil {
-		errRemove := os.Remove(fallbackPath)
-		if errRemove != nil {
-			return common.NewErrorf("Error removing existing fallback db file: %v", errRemove)
+	fallbackPath := fmt.Sprintf("%s.backup", dbPath)
+	if err := os.Remove(fallbackPath); err != nil && !os.IsNotExist(err) {
+		return common.NewErrorf("Error removing existing fallback db file: %v", err)
+	}
+	if err := removeSQLiteSidecars(fallbackPath); err != nil {
+		return common.NewErrorf("Error removing existing fallback db files: %v", err)
+	}
+	if db != nil {
+		if err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error; err != nil {
+			return common.NewErrorf("Error checkpointing current db: %v", err)
 		}
 	}
-	// Move the current database to the fallback location
-	err = os.Rename(config.GetDBPath(), fallbackPath)
+	if err := closeCurrentDatabase(); err != nil {
+		_ = InitDB(dbPath)
+		return common.NewErrorf("Error closing current db: %v", err)
+	}
+	if err := removeSQLiteSidecars(dbPath); err != nil {
+		_ = InitDB(dbPath)
+		return common.NewErrorf("Error removing current db sidecar files: %v", err)
+	}
+
+	err = os.Rename(dbPath, fallbackPath)
 	if err != nil {
+		_ = InitDB(dbPath)
 		return common.NewErrorf("Error backing up temporary db file: %v", err)
 	}
-
-	// Remove the temporary file before returning
-	defer os.Remove(fallbackPath)
-
-	// Move temp to DB path
-	err = os.Rename(tempPath, config.GetDBPath())
+	err = os.Rename(tempPath, dbPath)
 	if err != nil {
-		errRename := os.Rename(fallbackPath, config.GetDBPath())
-		if errRename != nil {
-			return common.NewErrorf("Error moving db file and restoring fallback: %v", errRename)
-		}
-		return common.NewErrorf("Error moving db file: %v", err)
+		return restoreDatabaseBackup(dbPath, fallbackPath, common.NewErrorf("Error moving db file: %v", err))
 	}
 
-	// Migrate DB
-	migration.MigrateDb()
-	err = InitDB(config.GetDBPath())
-	if err != nil {
-		errRename := os.Rename(fallbackPath, config.GetDBPath())
-		if errRename != nil {
-			return common.NewErrorf("Error migrating db and restoring fallback: %v", errRename)
-		}
-		return common.NewErrorf("Error migrating db: %v", err)
+	if err = migration.MigrateDb(); err != nil {
+		return restoreDatabaseBackup(dbPath, fallbackPath, common.NewErrorf("Error migrating db: %v", err))
 	}
+	if err = InitDB(dbPath); err != nil {
+		return restoreDatabaseBackup(dbPath, fallbackPath, common.NewErrorf("Error opening imported db: %v", err))
+	}
+	if err := os.Remove(fallbackPath); err != nil && !os.IsNotExist(err) {
+		logger.Warning("unable to remove database import backup: ", err)
+	}
+	_ = removeSQLiteSidecars(fallbackPath)
 
-	// Restart app
-	err = SendSighup()
-	if err != nil {
+	if err = SendSighup(); err != nil {
 		return common.NewErrorf("Error restarting app: %v", err)
 	}
 
 	return nil
 }
 
+func validateSQLiteDatabase(path string) error {
+	dsn := (&url.URL{Scheme: "file", Path: path}).String() + "?mode=ro"
+	validationDB, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return err
+	}
+	sqlDB, err := validationDB.DB()
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+
+	var checks []string
+	if err := validationDB.Raw("PRAGMA quick_check").Scan(&checks).Error; err != nil {
+		return err
+	}
+	if len(checks) == 0 {
+		return common.NewError("SQLite integrity check returned no result")
+	}
+	for _, check := range checks {
+		if !strings.EqualFold(strings.TrimSpace(check), "ok") {
+			return common.NewError("SQLite integrity check failed: ", check)
+		}
+	}
+	var settingsTableCount int64
+	if err := validationDB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'settings'").Scan(&settingsTableCount).Error; err != nil {
+		return err
+	}
+	if settingsTableCount != 1 {
+		return common.NewError("database does not contain an S-UI settings table")
+	}
+	return nil
+}
+
+func closeCurrentDatabase() error {
+	if db == nil {
+		return nil
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
+
+func removeSQLiteSidecars(path string) error {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func restoreDatabaseBackup(dbPath, fallbackPath string, cause error) error {
+	_ = closeCurrentDatabase()
+	_ = os.Remove(dbPath)
+	_ = removeSQLiteSidecars(dbPath)
+	if err := os.Rename(fallbackPath, dbPath); err != nil {
+		return common.NewErrorf("%v; restoring the previous database failed: %v", cause, err)
+	}
+	if err := InitDB(dbPath); err != nil {
+		return common.NewErrorf("%v; reopening the previous database failed: %v", cause, err)
+	}
+	return cause
+}
+
 func IsSQLiteDB(file io.Reader) (bool, error) {
 	signature := []byte("SQLite format 3\x00")
 	buf := make([]byte, len(signature))
-	_, err := file.Read(buf)
+	_, err := io.ReadFull(file, buf)
 	if err != nil {
 		return false, err
 	}
@@ -332,13 +398,14 @@ func SendSighup() error {
 	// Send SIGHUP to the current process
 	go func() {
 		time.Sleep(3 * time.Second)
+		var signalErr error
 		if runtime.GOOS == "windows" {
-			err = process.Kill()
+			signalErr = process.Kill()
 		} else {
-			err = process.Signal(syscall.SIGHUP)
+			signalErr = process.Signal(syscall.SIGHUP)
 		}
-		if err != nil {
-			logger.Error("send signal SIGHUP failed:", err)
+		if signalErr != nil {
+			logger.Error("send signal SIGHUP failed:", signalErr)
 		}
 	}()
 	return nil

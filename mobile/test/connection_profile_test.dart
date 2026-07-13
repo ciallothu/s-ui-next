@@ -28,6 +28,20 @@ void main() {
     });
   });
 
+  test('accepts only HTTP panel URLs without embedded credentials or query data', () {
+    const validHttps = ConnectionProfile(name: 'https', baseUrl: 'https://panel.example.com/app');
+    const validHttp = ConnectionProfile(name: 'http', baseUrl: 'http://192.0.2.10:2095/app/');
+    const invalidScheme = ConnectionProfile(name: 'file', baseUrl: 'file:///tmp/panel');
+    const embeddedCredentials = ConnectionProfile(name: 'credentials', baseUrl: 'https://admin:secret@panel.example.com/app/');
+    const query = ConnectionProfile(name: 'query', baseUrl: 'https://panel.example.com/app/?token=secret');
+
+    expect(validHttps.hasValidBaseUrl, isTrue);
+    expect(validHttp.hasValidBaseUrl, isTrue);
+    expect(invalidScheme.hasValidBaseUrl, isFalse);
+    expect(embeddedCredentials.hasValidBaseUrl, isFalse);
+    expect(query.hasValidBaseUrl, isFalse);
+  });
+
   test('round-trips secure profile JSON', () {
     const profile = ConnectionProfile(
       id: 'panel-1',

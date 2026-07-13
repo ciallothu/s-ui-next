@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -161,8 +162,18 @@ func (a *APIv3Handler) login(c *gin.Context) {
 		v3Error(c, http.StatusBadRequest, common.NewError("username and password are required"))
 		return
 	}
+	if err := service.ValidateTokenOptions(body.ExpiryDays, "S-UI Next Mobile"); err != nil {
+		v3Error(c, http.StatusBadRequest, err)
+		return
+	}
+	attemptKey := loginAttemptKey(c, body.Username)
+	if allowed, retryAfter := loginAllowed(attemptKey); !allowed {
+		v3Error(c, http.StatusTooManyRequests, common.NewErrorf("too many login attempts; try again in %s", retryAfter))
+		return
+	}
 	user, err := a.UserService.CheckPassword(body.Username, body.Password, getRemoteIp(c))
 	if err != nil {
+		recordLoginFailure(attemptKey)
 		v3Error(c, http.StatusUnauthorized, err)
 		return
 	}
@@ -171,14 +182,13 @@ func (a *APIv3Handler) login(c *gin.Context) {
 		return
 	}
 	if user.TOTPEnabled && !a.UserService.VerifySecondFactor(user, body.Code) {
+		recordLoginFailure(attemptKey)
 		v3Error(c, http.StatusUnauthorized, common.NewError("invalid TOTP or recovery code"))
 		return
 	}
 	username := user.Username
+	clearLoginFailures(attemptKey)
 	a.UserService.RecordLogin(username, getRemoteIp(c))
-	if body.ExpiryDays < 0 {
-		body.ExpiryDays = 30
-	}
 	token, err := a.UserService.AddToken(username, body.ExpiryDays, "S-UI Next Mobile")
 	if err != nil {
 		v3Error(c, http.StatusInternalServerError, err)
@@ -275,12 +285,13 @@ func (a *APIv3Handler) passkeyRegisterFinish(c *gin.Context) {
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(c.Query("sessionId"))
 	}
-	if err := a.AuthService.FinishPasskeyRegistration(apiUsername(c), sessionID, c.Query("name"), c.Request); err != nil {
+	name, err := a.AuthService.FinishPasskeyRegistration(apiUsername(c), sessionID, c.Query("name"), c.Request)
+	if err != nil {
 		v3Error(c, http.StatusBadRequest, err)
 		return
 	}
 	logger.Audit(apiUsername(c), "registered a passkey")
-	v3OK(c, gin.H{"registered": true})
+	v3OK(c, gin.H{"registered": true, "name": name})
 }
 
 func (a *APIv3Handler) passkeyRename(c *gin.Context) {
@@ -592,8 +603,8 @@ func (a *APIv3Handler) addToken(c *gin.Context) {
 		v3Error(c, http.StatusBadRequest, err)
 		return
 	}
-	if body.ExpiryDays < 0 {
-		v3Error(c, http.StatusBadRequest, common.NewError("expiryDays cannot be negative"))
+	if err := service.ValidateTokenOptions(body.ExpiryDays, body.Description); err != nil {
+		v3Error(c, http.StatusBadRequest, err)
 		return
 	}
 	token, err := a.UserService.AddToken(apiUsername(c), body.ExpiryDays, body.Description)
@@ -626,9 +637,18 @@ func (a *APIv3Handler) downloadDatabase(c *gin.Context) {
 }
 
 func (a *APIv3Handler) importDatabase(c *gin.Context) {
+	if err := limitDatabaseImport(c); err != nil {
+		v3Error(c, http.StatusRequestEntityTooLarge, err)
+		return
+	}
 	file, _, err := c.Request.FormFile("db")
 	if err != nil {
-		v3Error(c, http.StatusBadRequest, err)
+		var sizeError *http.MaxBytesError
+		if errors.As(err, &sizeError) {
+			v3Error(c, http.StatusRequestEntityTooLarge, err)
+		} else {
+			v3Error(c, http.StatusBadRequest, err)
+		}
 		return
 	}
 	defer file.Close()

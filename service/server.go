@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/rand"
 	"encoding/base64"
+	stdnet "net"
 	"os"
 	"runtime"
 	"strconv"
@@ -19,7 +20,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
-	"github.com/shirou/gopsutil/v4/net"
+	gopsnet "github.com/shirou/gopsutil/v4/net"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -55,12 +56,11 @@ func (s *ServerService) GetStatus(request string) *map[string]interface{} {
 
 func (s *ServerService) GetCpuPercent() float64 {
 	percents, err := cpu.Percent(0, false)
-	if err != nil {
+	if err != nil || len(percents) == 0 {
 		logger.Warning("get cpu percent failed:", err)
 		return 0
-	} else {
-		return percents[0]
 	}
+	return percents[0]
 }
 
 func (s *ServerService) GetMemInfo() map[string]interface{} {
@@ -120,7 +120,7 @@ func (s *ServerService) GetSwapInfo() map[string]interface{} {
 
 func (s *ServerService) GetNetInfo() map[string]interface{} {
 	info := make(map[string]interface{}, 0)
-	ioStats, err := net.IOCounters(false)
+	ioStats, err := gopsnet.IOCounters(false)
 	if err != nil {
 		logger.Warning("get io counters failed:", err)
 	} else if len(ioStats) > 0 {
@@ -161,7 +161,7 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	info["appMem"] = rtm.Sys
 	info["appThreads"] = uint32(runtime.NumGoroutine())
 	cpuInfo, err := cpu.Info()
-	if err == nil {
+	if err == nil && len(cpuInfo) > 0 {
 		info["cpuType"] = cpuInfo[0].ModelName
 	}
 	info["cpuCount"] = runtime.NumCPU()
@@ -170,17 +170,28 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	ipv4 := make([]string, 0)
 	ipv6 := make([]string, 0)
 	// get ip address
-	netInterfaces, _ := net.Interfaces()
-	for i := 0; i < len(netInterfaces); i++ {
-		if len(netInterfaces[i].Flags) > 2 && netInterfaces[i].Flags[0] == "up" && netInterfaces[i].Flags[1] != "loopback" {
-			addrs := netInterfaces[i].Addrs
-
-			for _, address := range addrs {
-				if strings.Contains(address.Addr, ".") {
-					ipv4 = append(ipv4, address.Addr)
-				} else if address.Addr[0:6] != "fe80::" {
-					ipv6 = append(ipv6, address.Addr)
-				}
+	netInterfaces, err := gopsnet.Interfaces()
+	if err != nil {
+		logger.Warning("get network interfaces failed:", err)
+	}
+	for _, networkInterface := range netInterfaces {
+		if !hasInterfaceFlag(networkInterface.Flags, "up") || hasInterfaceFlag(networkInterface.Flags, "loopback") {
+			continue
+		}
+		for _, address := range networkInterface.Addrs {
+			addressText := strings.TrimSpace(address.Addr)
+			ipText := strings.SplitN(addressText, "/", 2)[0]
+			if zoneIndex := strings.LastIndex(ipText, "%"); zoneIndex >= 0 {
+				ipText = ipText[:zoneIndex]
+			}
+			ip := stdnet.ParseIP(strings.Trim(ipText, "[]"))
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			if ip.To4() != nil {
+				ipv4 = append(ipv4, addressText)
+			} else {
+				ipv6 = append(ipv6, addressText)
 			}
 		}
 	}
@@ -189,6 +200,15 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	info["bootTime"], _ = host.BootTime()
 
 	return info
+}
+
+func hasInterfaceFlag(flags []string, wanted string) bool {
+	for _, flag := range flags {
+		if strings.EqualFold(flag, wanted) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *ServerService) GetLogs(count string, level string) []string {

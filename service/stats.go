@@ -46,19 +46,16 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 		return nil
 	}
 
-	var err error
 	db := database.GetDB()
 	tx := db.Begin()
-	defer func() {
-		if err == nil {
-			tx.Commit()
-		} else {
-			tx.Rollback()
-		}
-	}()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer tx.Rollback()
 
 	for _, stat := range *stats {
 		if stat.Resource == "user" {
+			var err error
 			if stat.Direction {
 				err = tx.Model(model.Client{}).Where("name = ?", stat.Tag).
 					UpdateColumn("up", gorm.Expr("up + ?", stat.Traffic)).Error
@@ -81,15 +78,18 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 			}
 		}
 	}
+	if enableTraffic {
+		if err := tx.Create(&stats).Error; err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
 	onlineResourcesM.Lock()
 	*onlineResources = currentOnline
 	onlineResourcesM.Unlock()
-
-	if !enableTraffic {
-		return nil
-	}
-	err = tx.Create(&stats).Error
-	return err
+	return nil
 }
 
 func (s *StatsService) GetStats(resource string, tag string, limit int) ([]model.Stats, error) {

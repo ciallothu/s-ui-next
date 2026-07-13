@@ -36,6 +36,17 @@ class ConnectionProfile {
 
   String get apiBaseUrl => '${normalizedBaseUrl}apiv3/';
 
+  bool get hasValidBaseUrl {
+    final uri = Uri.tryParse(normalizedBaseUrl);
+    if (uri == null) return false;
+    final scheme = uri.scheme.toLowerCase();
+    return (scheme == 'http' || scheme == 'https') &&
+        uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty &&
+        uri.query.isEmpty &&
+        uri.fragment.isEmpty;
+  }
+
   Map<String, String> get activeHeaders => Map.fromEntries(
         headers.entries.where(
           (entry) => entry.key.trim().isNotEmpty && entry.value.trim().isNotEmpty,

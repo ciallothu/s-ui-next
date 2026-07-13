@@ -85,11 +85,11 @@ func (a *ApiService) PasskeyRegistrationFinish(c *gin.Context) {
 	if sessionID == "" {
 		sessionID = c.Query("sessionId")
 	}
-	err := a.AuthService.FinishPasskeyRegistration(GetLoginUser(c), sessionID, c.Query("name"), c.Request)
+	name, err := a.AuthService.FinishPasskeyRegistration(GetLoginUser(c), sessionID, c.Query("name"), c.Request)
 	if err == nil {
 		logger.Audit(GetLoginUser(c), "registered a passkey")
 	}
-	jsonMsg(c, "save", err)
+	jsonMsgObj(c, "save", gin.H{"name": name}, err)
 }
 
 func (a *ApiService) PasskeyLoginBegin(c *gin.Context) {

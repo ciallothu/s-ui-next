@@ -3,9 +3,6 @@ package common
 import (
 	crand "crypto/rand"
 	"math/big"
-	mrand "math/rand"
-	"sync"
-	"time"
 )
 
 var (
@@ -14,9 +11,6 @@ var (
 		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 		'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
 	}
-
-	fallbackRand = mrand.New(mrand.NewSource(time.Now().UnixNano()))
-	fallbackMu   = sync.Mutex{}
 )
 
 func Random(n int) string {
@@ -28,11 +22,7 @@ func Random(n int) string {
 	for i := 0; i < n; i++ {
 		num, err := crand.Int(crand.Reader, maxBig)
 		if err != nil {
-			// fallback
-			fallbackMu.Lock()
-			result[i] = allSeq[fallbackRand.Intn(len(allSeq))]
-			fallbackMu.Unlock()
-			continue
+			panic("secure random source failed: " + err.Error())
 		}
 		result[i] = allSeq[int(num.Int64())]
 	}
@@ -46,10 +36,7 @@ func RandomInt(n int) int {
 	max := big.NewInt(int64(n))
 	result, err := crand.Int(crand.Reader, max)
 	if err != nil {
-		// fallback
-		fallbackMu.Lock()
-		defer fallbackMu.Unlock()
-		return fallbackRand.Intn(n)
+		panic("secure random source failed: " + err.Error())
 	}
 	return int(result.Int64())
 }

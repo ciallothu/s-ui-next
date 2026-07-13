@@ -466,30 +466,22 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 	return nil
 }
 
-func (s *ClientService) DepleteClients() ([]uint, error) {
-	var err error
+func (s *ClientService) DepleteClients() (inboundIds []uint, err error) {
 	var clients []model.Client
 	var changes []model.Changes
-	var users []string
-	var inboundIds []uint
 
 	dt := time.Now().Unix()
 	db := database.GetDB()
 
 	tx := db.Begin()
-	defer func() {
-		if err == nil {
-			tx.Commit()
-			if err1 := db.Exec("PRAGMA wal_checkpoint(FULL)").Error; err1 != nil {
-				logger.Error("Error checkpointing WAL: ", err1.Error())
-			}
-		} else {
-			tx.Rollback()
-		}
-	}()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	defer tx.Rollback()
 
 	// Reset clients
-	inboundIds, err = s.ResetClients(tx, dt)
+	var resetChanged bool
+	inboundIds, resetChanged, err = s.ResetClients(tx, dt)
 	if err != nil {
 		return nil, err
 	}
@@ -502,7 +494,6 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 
 	for _, client := range clients {
 		logger.Debug("Client ", client.Name, " is going to be disabled")
-		users = append(users, client.Name)
 		var userInbounds []uint
 		json.Unmarshal(client.Inbounds, &userInbounds)
 		// Find changed inbounds
@@ -526,13 +517,21 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 		if err != nil {
 			return nil, err
 		}
-		LastUpdate = dt
+	}
+	if err = tx.Commit().Error; err != nil {
+		return nil, err
+	}
+	if resetChanged || len(changes) > 0 {
+		LastUpdate.Store(dt)
+	}
+	if checkpointErr := db.Exec("PRAGMA wal_checkpoint(FULL)").Error; checkpointErr != nil {
+		logger.Error("Error checkpointing WAL: ", checkpointErr.Error())
 	}
 
 	return inboundIds, nil
 }
 
-func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
+func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, bool, error) {
 	var err error
 	var resetClients, allClients []*model.Client
 	var changes []model.Changes
@@ -541,7 +540,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("enable = true AND delay_start = true AND auto_reset = false AND (Up + Down) > 0").Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, client := range resetClients {
 		client.Expiry = dt + (int64(client.ResetDays) * 86400)
@@ -560,7 +559,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("enable = true AND delay_start = true AND auto_reset = true AND (Up + Down) > 0").Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, client := range resetClients {
 		client.NextReset = dt + (int64(client.ResetDays) * 86400)
@@ -579,7 +578,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("delay_start = false AND auto_reset = true AND next_reset < ?", dt).Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, client := range resetClients {
 		client.NextReset = dt + (int64(client.ResetDays) * 86400)
@@ -600,7 +599,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	if len(allClients) > 0 {
 		err = tx.Save(allClients).Error
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
@@ -608,11 +607,10 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	if len(changes) > 0 {
 		err = tx.Model(model.Changes{}).Create(&changes).Error
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		LastUpdate = dt
 	}
-	return inboundIds, nil
+	return inboundIds, len(allClients) > 0 || len(changes) > 0, nil
 }
 
 func (s *ClientService) findInboundsChanges(tx *gorm.DB, client *model.Client, fillOmitted bool) ([]uint, error) {

@@ -1,33 +1,56 @@
 package util
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ciallothu/s-ui-next/logger"
 	"github.com/ciallothu/s-ui-next/util/common"
 )
 
-func GetExternalLink(url string) string {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+const maxExternalSubscriptionBytes int64 = 8 << 20
+
+var externalSubscriptionClient = &http.Client{
+	Timeout: 20 * time.Second,
+	CheckRedirect: func(request *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return common.NewError("too many subscription redirects")
+		}
+		if request.URL.Scheme != "http" && request.URL.Scheme != "https" {
+			return common.NewError("subscription redirect must use HTTP or HTTPS")
+		}
+		return nil
+	},
+}
+
+func GetExternalLink(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		logger.Warning("sub: invalid external subscription URL")
+		return ""
 	}
-
-	client := &http.Client{Transport: tr}
-
-	response, err := client.Get(url)
+	response, err := externalSubscriptionClient.Get(parsed.String())
 	if err != nil {
 		logger.Warning("sub: Error making HTTP request:", err)
 		return ""
 	}
 	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		logger.Warning("sub: external subscription returned HTTP ", response.StatusCode)
+		return ""
+	}
 
-	body, err := io.ReadAll(response.Body)
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxExternalSubscriptionBytes+1))
 	if err != nil {
 		logger.Warning("sub: Error reading response body:", err)
+		return ""
+	}
+	if int64(len(body)) > maxExternalSubscriptionBytes {
+		logger.Warning("sub: external subscription response is too large")
 		return ""
 	}
 
@@ -43,7 +66,7 @@ func GetExternalSub(url string) ([]map[string]interface{}, error) {
 		return nil, common.NewError("no url")
 	}
 
-	data := GetExternalLink(url)
+	data := strings.TrimSpace(GetExternalLink(url))
 	if len(data) == 0 {
 		return nil, common.NewError("no result")
 	}
@@ -58,6 +81,7 @@ func GetExternalSub(url string) ([]map[string]interface{}, error) {
 		}
 		outbounds, ok := jsonData["outbounds"].([]any)
 		if !ok {
+			err = common.NewError("subscription JSON does not contain an outbounds array")
 			logger.Warning("sub: Error getting outbounds:", err)
 			return nil, err
 		}

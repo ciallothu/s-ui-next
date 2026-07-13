@@ -30,7 +30,11 @@ func (s *LinkService) GetLinks(linkJson *json.RawMessage, types string, clientIn
 			result = append(result, link.Uri)
 		case "sub":
 			subLinks := util.GetExternalLink(link.Uri)
-			result = append(result, strings.Split(subLinks, "\n")...)
+			for _, subLink := range strings.Split(subLinks, "\n") {
+				if subLink = strings.TrimSpace(subLink); subLink != "" {
+					result = append(result, subLink)
+				}
+			}
 		case "local":
 			if types == "all" {
 				result = append(result, s.addClientInfo(link.Uri, clientInfo))
@@ -44,7 +48,7 @@ func (s *LinkService) addClientInfo(uri string, clientInfo string) string {
 	if len(clientInfo) == 0 {
 		return uri
 	}
-	protocol := strings.Split(uri, "://")
+	protocol := strings.SplitN(uri, "://", 2)
 	if len(protocol) < 2 {
 		return uri
 	}
@@ -61,7 +65,8 @@ func (s *LinkService) addClientInfo(uri string, clientInfo string) string {
 			logger.Warning("sub: Error decoding vmess content:", err)
 			return uri
 		}
-		vmessJson["ps"] = vmessJson["ps"].(string) + clientInfo
+		remark, _ := vmessJson["ps"].(string)
+		vmessJson["ps"] = remark + clientInfo
 		result, err := json.MarshalIndent(vmessJson, "", "  ")
 		if err != nil {
 			logger.Warning("sub: Error decoding vmess + clientInfo content:", err)

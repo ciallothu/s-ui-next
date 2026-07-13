@@ -224,19 +224,21 @@ class _ConnectPageState extends State<ConnectPage> {
                               ),
                             ),
                           ),
-						  if (requiresSecondFactor) ...[
-							const SizedBox(height: 12),
-							TextField(
-							  controller: secondFactor,
-							  autofocus: true,
-							  keyboardType: TextInputType.number,
-							  autocorrect: false,
-							  decoration: InputDecoration(
-								labelText: context.t('connect.secondFactor'),
-								prefixIcon: const Icon(Icons.security_outlined),
-							  ),
-							),
-						  ],
+                          if (requiresSecondFactor) ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: secondFactor,
+                              autofocus: true,
+                              keyboardType: TextInputType.text,
+                              textCapitalization: TextCapitalization.characters,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              decoration: InputDecoration(
+                                labelText: context.t('connect.secondFactor'),
+                                prefixIcon: const Icon(Icons.security_outlined),
+                              ),
+                            ),
+                          ],
                         ] else
                           TextField(controller: token, obscureText: true, autocorrect: false, decoration: const InputDecoration(labelText: 'API Token', prefixIcon: Icon(Icons.key_outlined))),
                         const SizedBox(height: 8),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
+	"errors"
 	"html/template"
 	"io"
 	"io/fs"
@@ -90,10 +91,17 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.Use(sessions.Sessions("s-ui-next", store))
 
 	engine.Use(func(c *gin.Context) {
-		uri := c.Request.RequestURI
-		if strings.HasPrefix(uri, assetsBasePath) {
-			c.Header("Cache-Control", "max-age=31536000")
+		path := c.Request.URL.Path
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		if strings.HasPrefix(path, assetsBasePath) {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			c.Header("Cache-Control", "no-store")
 		}
+		c.Next()
 	})
 
 	// Serve the assets folder
@@ -179,6 +187,7 @@ func (s *Server) Start() (err error) {
 		}
 		c := &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
 		}
 		listener = network.NewAutoHttpsListener(listener)
 		listener = tls.NewListener(listener, c)
@@ -192,11 +201,16 @@ func (s *Server) Start() (err error) {
 	s.listener = listener
 
 	s.httpServer = &http.Server{
-		Handler: engine,
+		Handler:           engine,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	go func() {
-		s.httpServer.Serve(listener)
+		if serveErr := s.httpServer.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			logger.Error("web server stopped unexpectedly: ", serveErr)
+		}
 	}()
 
 	return nil

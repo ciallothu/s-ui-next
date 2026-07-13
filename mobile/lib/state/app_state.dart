@@ -110,6 +110,7 @@ class AppState extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
+      _validateBaseUrl(next);
       final login = await ApiClient.login(
         profile: next,
         username: username,
@@ -140,13 +141,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      if (next.normalizedBaseUrl.isEmpty) {
-        throw ApiException(AppLocalizations.tr(localeCode, 'error.urlRequired'));
-      }
-      final uri = Uri.tryParse(next.normalizedBaseUrl);
-      if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-        throw ApiException(AppLocalizations.tr(localeCode, 'error.urlInvalid'));
-      }
+      _validateBaseUrl(next);
       if (next.token.trim().isEmpty) throw ApiException(AppLocalizations.tr(localeCode, 'error.tokenRequired'));
       await _activateProfile(_prepareProfile(next), persist: true);
     } catch (exception) {
@@ -157,6 +152,15 @@ class AppState extends ChangeNotifier {
         busy = false;
         notifyListeners();
       }
+    }
+  }
+
+  void _validateBaseUrl(ConnectionProfile next) {
+    if (next.normalizedBaseUrl.isEmpty) {
+      throw ApiException(AppLocalizations.tr(localeCode, 'error.urlRequired'));
+    }
+    if (!next.hasValidBaseUrl) {
+      throw ApiException(AppLocalizations.tr(localeCode, 'error.urlInvalid'));
     }
   }
 

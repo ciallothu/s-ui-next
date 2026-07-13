@@ -2,8 +2,8 @@ package migration
 
 import (
 	"fmt"
-	"log"
 	"os"
+	"strings"
 
 	"github.com/ciallothu/s-ui-next/config"
 
@@ -11,19 +11,21 @@ import (
 	"gorm.io/gorm"
 )
 
-func MigrateDb() {
+func MigrateDb() error {
 	// void running on first install
 	path := config.GetDBPath()
 	_, err := os.Stat(path)
-	if err != nil {
+	if os.IsNotExist(err) {
 		println("Database not found")
-		return
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	db, err := gorm.Open(sqlite.Open(path))
 	if err != nil {
-		log.Fatal(err)
-		return
+		return err
 	}
 	defer func() {
 		if sqlDB, e := db.DB(); e == nil {
@@ -31,54 +33,90 @@ func MigrateDb() {
 		}
 	}()
 	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	committed := false
 	defer func() {
-		if err == nil {
-			tx.Commit()
-		} else {
-			tx.Rollback()
+		if !committed {
+			_ = tx.Rollback().Error
 		}
 	}()
 	currentVersion := config.GetVersion()
 	dbVersion := ""
-	tx.Raw("SELECT value FROM settings WHERE key = ?", "version").Find(&dbVersion)
+	if err := tx.Raw("SELECT value FROM settings WHERE key = ?", "version").Scan(&dbVersion).Error; err != nil {
+		return fmt.Errorf("read database version: %w", err)
+	}
 	fmt.Println("Current version:", currentVersion, "\nDatabase version:", dbVersion)
 
 	if currentVersion == dbVersion {
 		fmt.Println("Database is up to date, no need to migrate")
-		return
+		return nil
 	}
 
 	fmt.Println("Start migrating database...")
+	if dbVersion != "" &&
+		!isVersionSeries(dbVersion, "1.1") &&
+		!isVersionSeries(dbVersion, "1.2") &&
+		!isVersionSeries(dbVersion, "1.3") &&
+		!isVersionSeries(dbVersion, "1.4") {
+		return fmt.Errorf("unsupported database version %q", dbVersion)
+	}
 
 	// Before 1.2
 	if dbVersion == "" {
-		err = to1_1(tx)
-		if err != nil {
-			log.Fatal("Migration to 1.1 failed: ", err)
-			return
+		if err := runMigrationStep("1.1", tx, to1_1); err != nil {
+			return err
 		}
-		err = to1_2(tx)
-		if err != nil {
-			log.Fatal("Migration to 1.2 failed: ", err)
-			return
+		if err := runMigrationStep("1.2", tx, to1_2); err != nil {
+			return err
+		}
+		dbVersion = "1.2"
+	} else if isVersionSeries(dbVersion, "1.1") {
+		if err := runMigrationStep("1.2", tx, to1_2); err != nil {
+			return err
 		}
 		dbVersion = "1.2"
 	}
 
 	// Before 1.3
-	if dbVersion[0:3] == "1.2" {
-		err = to1_3(tx)
-		if err != nil {
-			log.Fatal("Migration to 1.3 failed: ", err)
-			return
+	if isVersionSeries(dbVersion, "1.2") {
+		if err := runMigrationStep("1.3", tx, to1_3); err != nil {
+			return err
 		}
 	}
 
 	// Set version
-	err = tx.Exec("UPDATE settings SET value = ? WHERE key = ?", currentVersion, "version").Error
-	if err != nil {
-		log.Fatal("Update version failed: ", err)
-		return
+	result := tx.Exec("UPDATE settings SET value = ? WHERE key = ?", currentVersion, "version")
+	if result.Error != nil {
+		return fmt.Errorf("update database version: %w", result.Error)
 	}
+	if result.RowsAffected == 0 {
+		if err := tx.Exec("INSERT INTO settings (key, value) VALUES (?, ?)", "version", currentVersion).Error; err != nil {
+			return fmt.Errorf("insert database version: %w", err)
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("commit database migration: %w", err)
+	}
+	committed = true
 	fmt.Println("Migration done!")
+	return nil
+}
+
+func isVersionSeries(version, series string) bool {
+	version = strings.TrimSpace(version)
+	return version == series || strings.HasPrefix(version, series+".")
+}
+
+func runMigrationStep(name string, tx *gorm.DB, step func(*gorm.DB) error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("migration to %s failed: %v", name, recovered)
+		}
+	}()
+	if err := step(tx); err != nil {
+		return fmt.Errorf("migration to %s failed: %w", name, err)
+	}
+	return nil
 }

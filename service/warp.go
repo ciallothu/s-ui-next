@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -19,6 +20,10 @@ import (
 
 type WarpService struct{}
 
+const maxWarpResponseBytes int64 = 1 << 20
+
+var warpHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, error) {
 	url := fmt.Sprintf("https://api.cloudflareclient.com/v0a2158/reg/%s", deviceId)
 
@@ -28,8 +33,7 @@ func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := warpHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -37,14 +41,7 @@ func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, 
 	if resp.StatusCode != http.StatusOK {
 		return nil, common.NewErrorf("warp API returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
 	}
-	buffer := bytes.NewBuffer(make([]byte, 8192))
-	buffer.Reset()
-	_, err = buffer.ReadFrom(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return buffer.Bytes(), nil
+	return readWarpBody(resp)
 }
 
 func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
@@ -64,8 +61,7 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	req.Header.Add("CF-Client-Version", "a-7.21-0721")
 	req.Header.Add("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := warpHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -73,15 +69,13 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	if resp.StatusCode != http.StatusOK {
 		return common.NewErrorf("warp registration returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
 	}
-	buffer := bytes.NewBuffer(make([]byte, 8192))
-	buffer.Reset()
-	_, err = buffer.ReadFrom(resp.Body)
+	responseBody, err := readWarpBody(resp)
 	if err != nil {
 		return err
 	}
 
 	var rspData map[string]interface{}
-	err = json.Unmarshal(buffer.Bytes(), &rspData)
+	err = json.Unmarshal(responseBody, &rspData)
 	if err != nil {
 		return err
 	}
@@ -215,8 +209,7 @@ func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) err
 	}
 	req.Header.Set("Authorization", "Bearer "+warpData["access_token"])
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := warpHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -224,14 +217,12 @@ func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) err
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return common.NewErrorf("warp license update returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
 	}
-	buffer := bytes.NewBuffer(make([]byte, 8192))
-	buffer.Reset()
-	_, err = buffer.ReadFrom(resp.Body)
+	responseBody, err := readWarpBody(resp)
 	if err != nil {
 		return err
 	}
 	var response map[string]interface{}
-	err = json.Unmarshal(buffer.Bytes(), &response)
+	err = json.Unmarshal(responseBody, &response)
 	if err != nil {
 		return err
 	}
@@ -250,8 +241,17 @@ func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) err
 }
 
 func readWarpResponse(resp *http.Response) string {
-	buffer := bytes.NewBuffer(make([]byte, 1024))
-	buffer.Reset()
-	_, _ = buffer.ReadFrom(resp.Body)
-	return buffer.String()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	return string(body)
+}
+
+func readWarpBody(resp *http.Response) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxWarpResponseBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxWarpResponseBytes {
+		return nil, common.NewError("warp API response is too large")
+	}
+	return body, nil
 }

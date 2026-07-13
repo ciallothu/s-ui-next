@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+const maxDatabaseImportRequestBytes int64 = 128 << 20
 
 type ApiService struct {
 	service.SettingService
@@ -41,6 +44,9 @@ func (a *ApiService) LoadData(c *gin.Context) {
 
 func (a *ApiService) getData(c *gin.Context) (interface{}, error) {
 	data := make(map[string]interface{}, 0)
+	// Keep the cursor on server time and one second behind so updates written
+	// during this request are observed by the next poll.
+	data["lastUpdate"] = time.Now().Add(-time.Second).Unix()
 	lu := c.Query("lu")
 	isUpdated, err := a.ConfigService.CheckChanges(lu)
 	if err != nil {
@@ -263,8 +269,15 @@ func (a *ApiService) postActions(c *gin.Context) (string, json.RawMessage, error
 
 func (a *ApiService) Login(c *gin.Context) {
 	remoteIP := getRemoteIp(c)
-	user, err := a.UserService.CheckPassword(c.Request.FormValue("user"), c.Request.FormValue("pass"), remoteIP)
+	username := c.Request.FormValue("user")
+	attemptKey := loginAttemptKey(c, username)
+	if allowed, retryAfter := loginAllowed(attemptKey); !allowed {
+		jsonMsg(c, "", common.NewErrorf("too many login attempts; try again in %s", retryAfter))
+		return
+	}
+	user, err := a.UserService.CheckPassword(username, c.Request.FormValue("pass"), remoteIP)
 	if err != nil {
+		recordLoginFailure(attemptKey)
 		jsonMsg(c, "", err)
 		return
 	}
@@ -275,11 +288,13 @@ func (a *ApiService) Login(c *gin.Context) {
 			return
 		}
 		if !a.UserService.VerifySecondFactor(user, code) {
+			recordLoginFailure(attemptKey)
 			jsonMsg(c, "", common.NewError("invalid TOTP or recovery code"))
 			return
 		}
 	}
 	loginUser := user.Username
+	clearLoginFailures(attemptKey)
 	a.UserService.RecordLogin(loginUser, remoteIP)
 
 	sessionMaxAge, err := a.SettingService.GetSessionMaxAge()
@@ -366,6 +381,10 @@ func (a *ApiService) SubConvert(c *gin.Context) {
 }
 
 func (a *ApiService) ImportDb(c *gin.Context) {
+	if err := limitDatabaseImport(c); err != nil {
+		jsonMsg(c, "", err)
+		return
+	}
 	file, _, err := c.Request.FormFile("db")
 	if err != nil {
 		jsonMsg(c, "", err)
@@ -374,6 +393,14 @@ func (a *ApiService) ImportDb(c *gin.Context) {
 	defer file.Close()
 	err = database.ImportDB(file)
 	jsonMsg(c, "", err)
+}
+
+func limitDatabaseImport(c *gin.Context) error {
+	if c.Request.ContentLength > maxDatabaseImportRequestBytes {
+		return &http.MaxBytesError{Limit: maxDatabaseImportRequestBytes}
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDatabaseImportRequestBytes)
+	return nil
 }
 
 func (a *ApiService) Logout(c *gin.Context) {

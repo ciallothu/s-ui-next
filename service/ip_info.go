@@ -19,7 +19,21 @@ type cachedIPOwner struct {
 	network     string
 }
 
-var ipOwnerCache sync.Map
+type cachedIPOwnerEntry struct {
+	owner     cachedIPOwner
+	expiresAt time.Time
+}
+
+const (
+	maxIPOwnerCacheEntries = 4096
+	positiveIPOwnerTTL     = 24 * time.Hour
+	negativeIPOwnerTTL     = 5 * time.Minute
+)
+
+var ipOwnerCache = struct {
+	sync.Mutex
+	entries map[string]cachedIPOwnerEntry
+}{entries: make(map[string]cachedIPOwnerEntry)}
 
 type ConnectionOwnerLookupBudget struct {
 	remaining int
@@ -125,11 +139,7 @@ func enrichConnectionIPInfo(info *ConnectionIPInfo, budget *ConnectionOwnerLooku
 }
 
 func cachedPublicIPOwner(ip string) (cachedIPOwner, bool, bool) {
-	if cached, ok := ipOwnerCache.Load(ip); ok {
-		owner, _ := cached.(cachedIPOwner)
-		return owner, true, owner.attribution != "" || owner.isp != "" || owner.asn != ""
-	}
-	return cachedIPOwner{}, false, false
+	return loadCachedIPOwner(ip)
 }
 
 func applyIPOwner(info *ConnectionIPInfo, owner cachedIPOwner) {
@@ -219,18 +229,53 @@ func scopeISP(scope string) string {
 
 func lookupPublicIPOwner(addr netip.Addr) (cachedIPOwner, bool) {
 	key := addr.String()
-	if cached, ok := ipOwnerCache.Load(key); ok {
-		owner, _ := cached.(cachedIPOwner)
-		return owner, owner.attribution != "" || owner.isp != "" || owner.asn != ""
+	if owner, hit, ok := loadCachedIPOwner(key); hit {
+		return owner, ok
 	}
 
 	owner, ok := queryCymruOwner(addr)
 	if !ok {
-		ipOwnerCache.Store(key, cachedIPOwner{})
+		storeCachedIPOwner(key, cachedIPOwner{}, negativeIPOwnerTTL)
 		return cachedIPOwner{}, false
 	}
-	ipOwnerCache.Store(key, owner)
+	storeCachedIPOwner(key, owner, positiveIPOwnerTTL)
 	return owner, true
+}
+
+func loadCachedIPOwner(key string) (cachedIPOwner, bool, bool) {
+	now := time.Now()
+	ipOwnerCache.Lock()
+	defer ipOwnerCache.Unlock()
+	entry, ok := ipOwnerCache.entries[key]
+	if !ok {
+		return cachedIPOwner{}, false, false
+	}
+	if !now.Before(entry.expiresAt) {
+		delete(ipOwnerCache.entries, key)
+		return cachedIPOwner{}, false, false
+	}
+	owner := entry.owner
+	return owner, true, owner.attribution != "" || owner.isp != "" || owner.asn != ""
+}
+
+func storeCachedIPOwner(key string, owner cachedIPOwner, ttl time.Duration) {
+	now := time.Now()
+	ipOwnerCache.Lock()
+	defer ipOwnerCache.Unlock()
+	if len(ipOwnerCache.entries) >= maxIPOwnerCacheEntries {
+		for cachedKey, entry := range ipOwnerCache.entries {
+			if !now.Before(entry.expiresAt) {
+				delete(ipOwnerCache.entries, cachedKey)
+			}
+		}
+	}
+	if len(ipOwnerCache.entries) >= maxIPOwnerCacheEntries {
+		for cachedKey := range ipOwnerCache.entries {
+			delete(ipOwnerCache.entries, cachedKey)
+			break
+		}
+	}
+	ipOwnerCache.entries[key] = cachedIPOwnerEntry{owner: owner, expiresAt: now.Add(ttl)}
 }
 
 func queryCymruOwner(addr netip.Addr) (cachedIPOwner, bool) {
