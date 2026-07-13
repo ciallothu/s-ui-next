@@ -37,17 +37,36 @@ jobs:
         run: |
           set -euo pipefail
 
+          fetch_json() {
+            local url="$1"
+            local response
+            local attempt
+            for attempt in 1 2 3 4; do
+              if response="$(curl --fail --silent --show-error --location \
+                --header "Accept: application/vnd.github+json" \
+                --header "Authorization: Bearer $GH_TOKEN" \
+                --header "X-GitHub-Api-Version: 2022-11-28" \
+                "$url")" && jq -e . >/dev/null 2>&1 <<< "$response"; then
+                printf '%s\n' "$response"
+                return 0
+              fi
+              sleep "$((attempt * 2))"
+            done
+            printf 'Unable to fetch valid GitHub API JSON from %s\n' "$url" >&2
+            return 1
+          }
+
           current_core="$(awk '$1 == "github.com/sagernet/sing-box" { print $2; exit }' go.mod)"
-          latest_core="$(gh api repos/SagerNet/sing-box/releases/latest --jq .tag_name)"
-          latest_panel="$(gh api repos/alireza0/s-ui/releases/latest --jq .tag_name)"
+          latest_core="$(fetch_json https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)"
+          latest_panel="$(fetch_json https://api.github.com/repos/alireza0/s-ui/releases/latest | jq -r .tag_name)"
           reviewed_panel="$(jq -r .s_ui_reviewed_release .github/upstream-tracking.json)"
           base_panel="$(jq -r .s_ui_base_release .github/upstream-tracking.json)"
           tracked_cronet="$(jq -r .cronet_toolchain_commit .github/upstream-tracking.json)"
           current_cronet="$(awk -F'"' '/CRONET_GO_VERSION:/ { print $2; exit }' .github/workflows/release.yml)"
 
-          upstream_go_mod="$(gh api repos/alireza0/s-ui/contents/go.mod --jq .content | base64 --decode)"
+          upstream_go_mod="$(fetch_json https://api.github.com/repos/alireza0/s-ui/contents/go.mod | jq -r .content | base64 --decode)"
           upstream_core="$(printf '%s\n' "$upstream_go_mod" | awk '$1 == "github.com/sagernet/sing-box" { print $2; exit }')"
-          upstream_release="$(gh api repos/alireza0/s-ui/contents/.github/workflows/release.yml --jq .content | base64 --decode)"
+          upstream_release="$(fetch_json https://api.github.com/repos/alireza0/s-ui/contents/.github/workflows/release.yml | jq -r .content | base64 --decode)"
           upstream_cronet="$(printf '%s\n' "$upstream_release" | awk -F'"' '/CRONET_GO_VERSION:/ { print $2; exit }')"
 
           updates=()
