@@ -1,337 +1,243 @@
 # S-UI Next
-**An Advanced Web Panel • Built on SagerNet/Sing-Box**
+
+**A sing-box management panel for web and mobile**
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-## Highlights in this fork
-
-S-UI Next is a downstream project that continues the original sing-box panel design while adding a versioned API, mobile apps, stronger authentication, richer analytics, and safer WireGuard management. The additions maintained here are listed first so the differences from the upstream project are immediately visible.
-
-- Android arm64 and iPhone arm64 management apps with visual and raw JSON editors.
-- Versioned `/apiv3` API covering resources, users, usage/statistics, logs, audit history, backup, and everyday tools.
-- Cloudflare Zero Trust friendly custom headers in the app connection profile.
-- User/date/search filters for usage, statistics, logs, audit records, and parsed connection details by user, inbound, outbound, endpoint, and destination.
-- Searchable multi-level system logs and administrator change history in both Web and App.
-- Granular subscription user-info controls for upload, download, quota, expiry, and node-name remaining quota.
-- Per-client random subscription IDs, so public subscription URLs no longer expose or accept guessable usernames.
-- OIDC single sign-on, TOTP two-factor authentication with one-time recovery codes, and WebAuthn passkeys.
-- bcrypt password storage with automatic migration from legacy plaintext records after successful login.
-- Web/App navigation parity: users, resources, TLS, core configuration, analytics, logs, administration, settings, and tools.
-- Visual editors backed by optional raw JSON editing, including fields introduced by newer sing-box versions.
-- Historical traffic views that remain stable until refreshed, plus an explicit real-time mode.
-- Reworked WireGuard Endpoint management with separate server peer ownership and client routing fields, secure PSK generation/redaction, safe split-tunnel defaults, IPv4/IPv6 validation, explicit exported Endpoint host/port, controlled client configuration export, managed hub forwarding/site-gateway routes, and save/apply rollback.
-- Localized Web and App interfaces in English, Farsi, Vietnamese, Simplified Chinese, Traditional Chinese, Russian, Japanese, French, and Latin.
-- Tag-aware release filenames and seven intended GitHub Actions entries: five upstream workflows plus mobile CI and mobile application builds.
-
-> Mobile source is available in [`mobile/`](mobile/README.md). Android arm64 and unsigned iPhone arm64 artifacts are built remotely by GitHub Actions. The app uses `/apiv3`, supports arbitrary request headers, and pre-fills Cloudflare Access Service Token headers.
-
-## Milestones
-
-- [x] Stable mobile API and secure token lifecycle.
-- [x] Android arm64 and unsigned iPhone arm64 CI/release builds.
-- [x] Visual editors and raw JSON fallback across Web and App.
-- [x] Filterable analytics, structured logs, and dotted traffic charts.
-- [x] OIDC, TOTP/2FA, recovery codes, and passkey management.
-- [x] Safe WireGuard Endpoint editing, PSK/key handling, client export, managed hub/site routing, validation, and transactional apply.
-- [x] Seven-workflow GitHub Actions layout: five upstream workflows plus mobile CI and mobile release builds.
-
-## Release artifact naming
-
-Tag builds include the tag in every downloadable filename, for example `s-ui-next-v1.2.0-linux-amd64.tar.gz`, `s-ui-next-v1.2.0-windows-amd64.zip`, `s-ui-next-v1.2.0-android-arm64.apk`, and `s-ui-next-v1.2.0-iphone-arm64-unsigned.ipa`.
-
-![](https://img.shields.io/github/v/release/ciallothu/s-ui-next.svg)
+[![Latest release](https://img.shields.io/github/v/release/ciallothu/s-ui-next.svg)](https://github.com/ciallothu/s-ui-next/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ciallothu/s-ui-next)](https://goreportcard.com/report/github.com/ciallothu/s-ui-next)
-[![Downloads](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)
-[![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+[![Downloads](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)](https://github.com/ciallothu/s-ui-next/releases)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-> **Disclaimer:** This project is only for personal learning and communication, please do not use it for illegal purposes, please do not use it in a production environment
+S-UI Next is a downstream project based on [alireza0/s-ui](https://github.com/alireza0/s-ui). It keeps the original panel and database model while adding a versioned API, Android and iPhone management apps, stronger administrator authentication, searchable traffic and connection records, safer subscription links, and transactional WireGuard management.
 
-**If you think this project is helpful to you, you may wish to give a**:star2:
+The embedded core currently follows `sing-box v1.13.14`. Existing Web management, API v2, database, and subscription interfaces remain available, so an existing S-UI installation can be migrated without rebuilding its configuration from scratch.
 
-**Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding conventions, testing, and the pull request process.
+> Use this project only where it is legal to do so. You are responsible for the configuration you deploy and the traffic carried by it.
 
-## Quick Overview
-| Features                               |      Enable?       |
-| -------------------------------------- | :----------------: |
-| Multi-Protocol                         | :heavy_check_mark: |
-| Multi-Language                         | :heavy_check_mark: |
-| Multi-Client/Inbound                   | :heavy_check_mark: |
-| Advanced Traffic Routing Interface     | :heavy_check_mark: |
-| Client & Traffic & System Status       | :heavy_check_mark: |
-| Subscription Link (link/json/clash + info)| :heavy_check_mark: |
-| Dark/Light Theme                       | :heavy_check_mark: |
-| Versioned API + Mobile Apps            | :heavy_check_mark: |
-| OIDC, TOTP and Passkeys                | :heavy_check_mark: |
-| Filtered Usage, Statistics and Logs    | :heavy_check_mark: |
+## What S-UI Next Adds
 
-## Supported Platforms
-| Platform | Architecture | Status |
-|----------|--------------|---------|
-| Linux    | amd64, arm64, armv7, armv6, armv5, 386, s390x | ✅ Supported |
-| Windows  | amd64, 386, arm64 | ✅ Supported |
-| macOS    | amd64, arm64 | 🚧 Experimental |
+### Web panel and configuration
 
-## Screenshots
+- Manage clients, inbounds, outbounds, endpoints, services, TLS, DNS, routing rules, and global sing-box settings from one panel.
+- Use structured editors for day-to-day configuration or switch to raw JSON when a sing-box field is not represented by the form.
+- Manage users individually or in bulk, including traffic quota, expiry, group, enable/disable state, and subscription options.
+- View system state, online users, resource traffic, connection details, logs, administrator changes, and historical usage without leaving the panel.
+- Keep historical charts stable until they are refreshed, or enable the separate real-time mode when live traffic is needed.
+- Handle long usernames, IPv6 addresses, targets, and log messages with fixed desktop columns, horizontal scrolling, and a compact mobile layout.
+- Use dark or light themes in English, Farsi, Vietnamese, Simplified Chinese, Traditional Chinese, Russian, Japanese, French, or Latin.
 
-!["Main"](https://github.com/ciallothu/s-ui-next-frontend/raw/main/media/main.png)
+### Mobile app
 
-[Other UI Screenshots](https://github.com/ciallothu/s-ui-next-frontend/blob/main/screenshots.md)
+The Flutter app in [`mobile/`](mobile/README.md) talks directly to `/apiv3`; it is not a WebView wrapper.
 
-## API Documentation
+- Android arm64 APK and unsigned iPhone arm64 IPA are available from the Releases page.
+- The dashboard, users, resources, TLS, core configuration, analytics, logs, administrators, settings, backup, and tools pages follow the Web panel's management model.
+- Resource and configuration screens provide both visual editing and raw JSON. Numeric lists such as ports, user IDs, and WireGuard reserved values retain their JSON types.
+- A username/password login can create a dedicated mobile API token. Tokens, panel addresses, and custom headers are kept in Android Keystore or iOS Keychain backed secure storage.
+- Connection profiles accept arbitrary request headers and include dedicated fields for Cloudflare Access Service Tokens.
+- Multiple panels can be saved at the same time. The panel switcher sits beside the current panel name at the top of the navigation drawer and is also available before login.
+- Switching panels rebuilds the active view and reloads dashboard, resource, configuration, analytics, administration, and tools data automatically. No manual pull-to-refresh is required.
+- Existing single-panel profiles are migrated automatically. A normal logout keeps the saved profile; revoking the token removes that panel's local credentials.
 
-[API-Documentation Wiki](https://github.com/ciallothu/s-ui-next/wiki/API-Documentation)
+### API v3
 
-## Authentication configuration
+`/apiv3` is the stable JSON interface used by the mobile app and is also suitable for third-party clients.
 
-Authentication features are configured from **Settings → Login & identity** and **Admins → Login security**. When the panel is behind a reverse proxy or Cloudflare Zero Trust, use the public HTTPS URL that users actually open in the browser.
+- Password login, API token issue/list/revoke, authenticated bootstrap, panel metadata, status, and online users.
+- CRUD and bulk operations for clients, inbounds, outbounds, endpoints, services, TLS, global configuration, and settings.
+- User usage, resource statistics, parsed connections, system logs, and administrator audit history with server-side search, time filters, and bounded pagination.
+- Database backup import/export, sing-box configuration export, panel/core restart, link and subscription conversion, key generation, and outbound checks.
+- Consistent success/error envelopes and standard HTTP status codes. Bearer tokens are preferred; legacy token headers remain supported for existing clients.
+
+See [`docs/mobile-api.md`](docs/mobile-api.md) for routes, parameters, and response conventions.
+
+### Administrator authentication
+
+- OIDC single sign-on with configurable issuer, client credentials, scopes, username claim, and an allow-list for external identities.
+- TOTP two-factor authentication with one-time recovery codes.
+- WebAuthn passkeys for registration and passwordless login, with automatic RP ID and origin detection behind common reverse proxies.
+- Passkey names derived from the authenticator AAGUID when available. Known providers include Bitwarden, 1Password, iCloud Keychain, Google Password Manager, Windows Hello, Dashlane, Keeper, NordPass, Proton Pass, and KeePassXC.
+- Privacy-preserving or unknown authenticators fall back to a name based on platform, attachment type, and transports. Names can still be edited manually.
+- Passwords are stored with bcrypt. Legacy plaintext administrator records are upgraded after a successful login.
+- Web sessions use HttpOnly cookies, and the login router verifies the server-side session rather than depending on JavaScript access to the cookie.
+
+### Analytics, logs, and connection attribution
+
+- Aggregate usage by user and inspect resource statistics by tag and date range.
+- Search parsed connections by user, inbound, outbound, endpoint, target, source, or message text.
+- Enrich source, destination, and remote addresses with IP, network type, ASN, organization, and location data where available. Private and reserved networks are identified without unnecessary external lookups.
+- Browse structured system logs and administrator change history with user, level, date, and text filters.
+- Use the same analytics and connection-detail model in Web and mobile views.
+
+### Subscriptions and client privacy
+
+- New clients receive random opaque subscription IDs, so generated public URLs do not expose a username. Legacy username links remain readable for upgrades and older clients.
+- Subscription user information can independently expose upload, download, quota, expiry, and remaining quota in the node name.
+- Link, JSON, and Clash subscriptions continue to support external links and subscriptions while applying stricter URL, domain, size, and data validation.
+- Disabled subscription information no longer leaks a partial `Subscription-Userinfo` header, and incomplete metadata is handled without panics.
+
+### WireGuard endpoint management
+
+WireGuard endpoints use a dedicated editor and backend service rather than treating every field as interchangeable sing-box JSON.
+
+- Separate server endpoint addresses, virtual allocation networks, peer address ownership, client routes, and the public UDP endpoint exported to clients.
+- Generate private keys and PSKs with secure randomness. Secret values are redacted in normal resource responses and preserved when a redacted form is saved.
+- Export a controlled client configuration or QR code only through an explicit action.
+- Choose safe route presets for WireGuard virtual networks, a single peer, custom networks, or an explicit full tunnel.
+- Support roaming clients, fixed remote nodes, and site gateways with separate local and remote site CIDRs.
+- Optionally route traffic between peers through the S-UI Next server using a managed rule table. Equivalent user-authored rules are not duplicated or removed.
+- Validate IPv4/IPv6 host addresses, prefixes, peer ownership, routes, public endpoint host/port, and conflicting configuration before saving.
+- **Save** stores a validated configuration without changing the running core. **Save & apply** validates the complete generated configuration, restarts sing-box synchronously, checks its state, and restores the previous runtime if applying the change fails.
+
+### Security and data safety
+
+- Login rate limiting and bounded authentication sessions reduce brute-force and resource exhaustion risk.
+- Configuration changes are validated before they reach sing-box. Applying a configuration checks the restarted core and restores the previous working state on failure.
+- Database backup import validates the uploaded database, replaces it atomically, and restores the previous database if activation fails.
+- Security-sensitive identifiers and keys use cryptographically secure randomness.
+- External requests have timeouts and response-size limits; panel addresses, domains, links, subscriptions, and generated configuration are validated before use.
+- Frontend content is rendered without unsafe dynamic HTML, and failed requests do not silently replace valid panel data.
+
+## Supported Protocols
+
+| Category | Protocols and modes |
+| --- | --- |
+| General | Mixed, SOCKS, HTTP, HTTPS, Direct, Redirect, TProxy |
+| Proxy | VLESS, VMess, Trojan, Shadowsocks, ShadowTLS |
+| Modern transports | Hysteria, Hysteria2, TUIC, Naive |
+| Endpoints | WireGuard, Tailscale, WARP |
+| Routing and security | XTLS, Reality, uTLS, ACME, gVisor, PROXY Protocol, transparent proxying |
+
+Support ultimately follows the embedded sing-box version and the build tags used by each release target.
+
+## Downloads
+
+| Target | Architectures | Artifact |
+| --- | --- | --- |
+| Linux server | amd64, arm64, armv7, armv6, armv5, 386, s390x | `.tar.gz` |
+| Windows server | amd64, arm64 | `.zip` |
+| Android app | arm64 | `.apk` |
+| iPhone app | arm64 | unsigned `.ipa` |
+| GHCR image | linux/amd64, linux/386, linux/arm64/v8, linux/arm/v7, linux/arm/v6 | OCI image |
+
+Download the current packages from [GitHub Releases](https://github.com/ciallothu/s-ui-next/releases/latest). The iPhone package is not signed and must be signed with your own Apple Developer identity before installation.
+
+## Quick Start
+
+### Docker Compose
+
+```sh
+mkdir s-ui-next && cd s-ui-next
+curl -fsSLO https://raw.githubusercontent.com/ciallothu/s-ui-next/main/docker-compose.yml
+docker compose up -d
+```
+
+The compose file stores the database in `./db`, certificates in `./cert`, and exposes the default panel and subscription ports.
+
+### Docker CLI
+
+```sh
+mkdir -p s-ui-next/db s-ui-next/cert
+cd s-ui-next
+docker run -d \
+  --name s-ui-next \
+  --restart unless-stopped \
+  -p 2095:2095 \
+  -p 2096:2096 \
+  -v "$PWD/db:/app/db" \
+  -v "$PWD/cert:/app/cert" \
+  ghcr.io/ciallothu/s-ui-next:latest
+```
+
+### Linux packages
+
+1. Download `s-ui-next-<tag>-linux-<arch>.tar.gz` from the latest release.
+2. Extract it and place the `s-ui-next` directory under `/usr/local/`.
+3. Install `s-ui-next.sh` as `/usr/bin/s-ui-next` and copy `s-ui-next.service` to `/etc/systemd/system/`.
+4. Run `systemctl daemon-reload && systemctl enable --now s-ui-next`.
+5. Use `s-ui-next` for the interactive management menu.
+
+### Windows packages
+
+1. Download the matching Windows ZIP from the latest release.
+2. Extract it and run `install-windows.bat` as Administrator.
+3. Use `s-ui-next-windows.bat` for service management.
+
+### Mobile packages
+
+- Install the Android arm64 APK directly on a compatible device.
+- Sign the unsigned iPhone arm64 IPA with your own certificate before installing it.
+- Add the panel URL, credentials or API token, and any reverse-proxy headers on the connection screen.
+
+## Default Settings
+
+| Setting | Default |
+| --- | --- |
+| Panel URL | `http://<host>:2095/app/` |
+| Subscription URL | `http://<host>:2096/sub/` |
+| Initial database account | `admin` / `admin` |
+
+Change the initial credentials and publish the panel through HTTPS before exposing it to an untrusted network. Ports, paths, and administrator credentials can be changed from the management menu or the Web panel.
+
+## Authentication Setup
+
+Authentication options are under **Settings → Login & identity** and **Admins → Login security**.
 
 ### OIDC / SSO
 
-Enable OIDC, then configure the issuer URL, client ID, client secret, scopes, username claim, and allowed identities. The redirect URL must exactly match the URL registered with the OIDC provider. For the default Web Path this is usually:
+Configure the issuer URL, client ID, client secret, scopes, username claim, and allowed identities. For the default Web Path, register this callback with the identity provider:
 
 ```text
 https://panel.example.com/app/api/oidc-callback
 ```
 
-If you changed the Web Path, keep that path in the callback URL, for example `https://panel.example.com/custom-path/api/oidc-callback`. The username claim defaults to `preferred_username`, then falls back to `email` and `sub`. Identities not matching an existing admin username must be listed in the allowed identities field.
+If the Web Path changes, the callback path must change with it. The username claim defaults to `preferred_username`, then falls back to `email` and `sub`.
 
 ### TOTP / 2FA
 
-TOTP is managed from **Admins → Login security**. Enabling it shows an authenticator URI/secret and one-time recovery codes. Store the recovery codes immediately; each code can be used once when the normal 6-digit authenticator code is unavailable.
+Enable TOTP for an administrator from **Admins → Login security**. Save the generated recovery codes immediately; each code is valid once.
 
 ### WebAuthn passkeys
 
-Enable passkeys in **Settings → Login & identity**, then add passkeys from **Admins → Login security**. RP ID and allowed origins can normally be left blank: S-UI Next auto-detects the current management domain from the browser origin and reverse-proxy headers such as `Forwarded`, `X-Forwarded-Host`, and `X-Forwarded-Proto`.
+Enable passkeys globally, then register them for each administrator. RP ID and allowed origins can normally remain empty: S-UI Next derives them from the browser origin and trusted `Forwarded`, `X-Forwarded-Host`, and `X-Forwarded-Proto` headers.
 
-Manual configuration is still available for unusual proxy layouts. RP ID should be only the domain, for example `panel.example.com`; allowed origins should include full scheme origins, for example `https://panel.example.com`. Passkeys require HTTPS except for localhost-style development origins. The Web UI gives a best-effort automatic name such as iCloud Keychain, Google Password Manager, Windows Hello, or Security key; names can be renamed afterwards.
+For unusual proxy layouts, set the RP ID to a domain such as `panel.example.com` and allowed origins to complete origins such as `https://panel.example.com`. WebAuthn requires HTTPS except on localhost-style development origins.
 
-## WireGuard Endpoint configuration
+## WireGuard Configuration Notes
 
-The WireGuard editor follows the field semantics of the embedded sing-box `v1.13.12` Endpoint implementation:
-
-- **Server Endpoint addresses** identify the S-UI Next side itself and should normally be an IPv4 `/32` and/or IPv6 `/128`, such as `10.66.66.1/32` and `fd66:66:66::1/128`.
-- **Virtual network prefixes** are allocation ranges, such as `10.66.66.0/24` and `fd66:66:66::/64`. They are not written into the Endpoint `address` field.
-- **Server peer allowed IPs** assign source addresses to one peer and therefore use unique host routes such as `/32` and `/128`.
-- **Client AllowedIPs** choose destination traffic sent through the client tunnel. New peers default to the WireGuard virtual networks; `0.0.0.0/0` and `::/0` are only emitted after explicitly selecting the full-tunnel preset.
-- **Client Endpoint host/port** must identify the real public WireGuard UDP entrypoint. It is deliberately independent from the Web panel hostname, which may be behind Cloudflare Access or an HTTP reverse proxy.
-- **Regular clients** have no sing-box runtime peer address/port. WireGuard learns the current endpoint from handshakes, so this is suitable for phones, laptops, and NATed devices.
-- **Fixed remote nodes** use a known remote WireGuard address and UDP port. Their server-side AllowedIPs normally remain the node’s own `/32` and/or `/128`.
-- **Site gateways** represent a remote gateway plus one or more LAN prefixes behind it. The server runtime peer AllowedIPs include the gateway tunnel address plus the remote site CIDRs. The exported client configuration includes the S-UI Next WireGuard virtual networks and configured local site CIDRs, not the remote site’s own LAN.
-- **PSK and private keys** are generated with backend secure randomness, hidden in ordinary API resource responses, preserved when saving redacted forms, and revealed only through explicit generation/copy/export actions.
-- **Device forwarding through S-UI Next** is stored in a dedicated managed-route table and injected when the runtime configuration is generated. It means traffic is forwarded by this S-UI Next server between devices in the same Endpoint; it is not a direct device-to-device tunnel or NAT traversal feature. Equivalent user rules are not duplicated, and disabling the feature never deletes a user-authored rule.
-- **Site-to-site routing** requires a return path on the local or remote LAN. If NAT is not configured separately, add a route such as `192.168.50.0/24 via <WireGuard gateway>` on the relevant network; otherwise only one-way traffic may be visible.
-
-Use **Save** to keep a validated change without altering the current runtime. **Save & apply** validates the complete generated configuration, restarts the embedded core synchronously, checks the running state, and restores the previous runtime if application fails. Existing Endpoint JSON remains readable; the database migration adds only the managed-route table, while WireGuard editor metadata is stored compatibly in the existing Endpoint options.
-
-## Default Installation Information
-- Panel Port: 2095
-- Panel Path: /app/
-- Subscription Port: 2096
-- Subscription Path: /sub/
-- User/Password: admin
-
-## Install & Upgrade to Latest Version
-
-### Linux/macOS
-```sh
-bash <(curl -Ls https://raw.githubusercontent.com/ciallothu/s-ui-next/master/install.sh)
-```
-
-### Windows
-1. Download the latest Windows release from [GitHub Releases](https://github.com/ciallothu/s-ui-next/releases/latest)
-2. Extract the ZIP file
-3. Run `install-windows.bat` as Administrator
-4. Follow the installation wizard
-
-## Install legacy Version
-
-**Step 1:** To install your desired legacy version, add the version to the end of the installation command. e.g., ver `1.0.0`:
-
-```sh
-VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/ciallothu/s-ui-next/$VERSION/install.sh) $VERSION
-```
-
-## Manual installation
-
-### Linux/macOS
-1. Get the latest version of S-UI Next based on your OS/Architecture from GitHub: [https://github.com/ciallothu/s-ui-next/releases/latest](https://github.com/ciallothu/s-ui-next/releases/latest)
-2. **OPTIONAL** Get the latest version of `s-ui-next.sh` [https://raw.githubusercontent.com/ciallothu/s-ui-next/master/s-ui-next.sh](https://raw.githubusercontent.com/ciallothu/s-ui-next/master/s-ui-next.sh)
-3. **OPTIONAL** Copy `s-ui-next.sh` to /usr/bin/ and run `chmod +x /usr/bin/s-ui-next`.
-4. Extract s-ui-next tar.gz file to a directory of your choice and navigate to the directory where you extracted the tar.gz file.
-5. Copy *.service files to /etc/systemd/system/ and run `systemctl daemon-reload`.
-6. Enable autostart and start S-UI Next service using `systemctl enable s-ui-next --now`
-7. Start sing-box service using `systemctl enable sing-box --now`
-
-### Windows
-1. Get the latest Windows version from GitHub: [https://github.com/ciallothu/s-ui-next/releases/latest](https://github.com/ciallothu/s-ui-next/releases/latest)
-2. Download the appropriate Windows package (e.g., `s-ui-next-windows-amd64.zip`)
-3. Extract the ZIP file to a directory of your choice
-4. Run `install-windows.bat` as Administrator
-5. Follow the installation wizard
-6. Access the panel at http://localhost:2095/app
-
-## Uninstall S-UI Next
-
-```sh
-sudo -i
-
-systemctl disable s-ui-next  --now
-
-rm -f /etc/systemd/system/sing-box.service
-systemctl daemon-reload
-
-rm -fr /usr/local/s-ui-next
-rm /usr/bin/s-ui-next
-```
-
-## Install using Docker
-
-<details>
-   <summary>Click for details</summary>
-
-### Usage
-
-**Step 1:** Install Docker
-
-```shell
-curl -fsSL https://get.docker.com | sh
-```
-
-**Step 2:** Install S-UI Next
-
-> Docker compose method
-
-```shell
-mkdir s-ui-next && cd s-ui-next
-wget -q https://raw.githubusercontent.com/ciallothu/s-ui-next/master/docker-compose.yml
-docker compose up -d
-```
-
-> Use docker
-
-```shell
-mkdir s-ui-next && cd s-ui-next
-docker run -itd \
-    -p 2095:2095 -p 2096:2096 -p 443:443 -p 80:80 \
-    -v $PWD/db/:/app/db/ \
-    -v $PWD/cert/:/root/cert/ \
-    --name s-ui-next --restart=unless-stopped \
-    ghcr.io/ciallothu/s-ui-next:latest
-```
-
-> Build your own image
-
-```shell
-git clone https://github.com/ciallothu/s-ui-next
-git submodule update --init --recursive
-docker build -t s-ui-next .
-```
-
-</details>
-
-## Manual run ( contribution )
-
-<details>
-   <summary>Click for details</summary>
-
-### Build and run whole project
-```shell
-./runSUI.sh
-```
-
-### Clone the repository
-```shell
-# clone repository
-git clone https://github.com/ciallothu/s-ui-next
-# clone submodules
-git submodule update --init --recursive
-```
-
-
-### - Frontend
-
-Visit [s-ui-next-frontend](https://github.com/ciallothu/s-ui-next-frontend) for frontend code
-
-### - Backend
-> Please build frontend once before!
-
-To build backend:
-```shell
-# remove old frontend compiled files
-rm -fr web/html/*
-# apply new frontend compiled files
-cp -R frontend/dist/ web/html/
-# build
-go build -o sui main.go
-```
-
-To run backend (from root folder of repository):
-```shell
-./sui
-```
-
-</details>
-
-## Languages
-
-- English
-- Farsi
-- Vietnamese
-- Chinese (Simplified)
-- Chinese (Traditional)
-- Japanese
-- French
-- Latin
-- Russian
-
-## Features
-
-- Supported protocols:
-  - General:  Mixed, SOCKS, HTTP, HTTPS, Direct, Redirect, TProxy
-  - V2Ray based: VLESS, VMess, Trojan, Shadowsocks
-  - Other protocols: ShadowTLS, Hysteria, Hysteria2, Naive, TUIC
-- Supports XTLS protocols
-- An advanced interface for routing traffic, incorporating PROXY Protocol, External, and Transparent Proxy, SSL Certificate, and Port
-- An advanced interface for inbound and outbound configuration
-- Clients’ traffic cap and expiration date
-- Displays online clients, inbounds and outbounds with traffic statistics, and system status monitoring
-- Subscription service with ability to add external links and subscription
-- HTTPS for secure access to the web panel and subscription service (self-provided domain + SSL certificate)
-- Dark/Light theme
+- **Server endpoint addresses** identify S-UI Next itself and are normally host routes such as `10.66.66.1/32` and `fd66:66:66::1/128`.
+- **Virtual network prefixes** are allocation ranges such as `10.66.66.0/24` and `fd66:66:66::/64`; they are not written into the endpoint `address` field.
+- **Server peer AllowedIPs** assign source ownership and should normally be unique `/32` and `/128` routes.
+- **Client AllowedIPs** choose destination traffic sent through the tunnel. New peers default to the WireGuard virtual networks; `0.0.0.0/0` and `::/0` are emitted only by the full-tunnel preset.
+- **Client endpoint host and port** must point to the public UDP listener. Do not reuse the Web panel hostname unless it also accepts WireGuard UDP traffic.
+- **Regular clients** leave the runtime peer endpoint dynamic, which suits phones, laptops, and devices behind NAT. **Fixed remote nodes** use an explicit remote address and port.
+- **Site gateways** add the remote LANs to the server-side peer while exporting the configured local LANs to that gateway. Both sides still need a valid return route or separately configured NAT.
 
 ## Environment Variables
 
-<details>
-  <summary>Click for details</summary>
+| Variable | Values | Default |
+| --- | --- | --- |
+| `SUI_LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
+| `SUI_DEBUG` | boolean | `false` |
+| `SUI_BIN_FOLDER` | directory | `bin` |
+| `SUI_DB_FOLDER` | directory | `db` |
+| `SINGBOX_API` | sing-box API address | unset |
 
-### Usage
+## Development
 
-| Variable       |                      Type                      | Default       |
-| -------------- | :--------------------------------------------: | :------------ |
-| SUI_LOG_LEVEL  | `"debug"` \| `"info"` \| `"warn"` \| `"error"` | `"info"`      |
-| SUI_DEBUG      |                   `boolean`                    | `false`       |
-| SUI_BIN_FOLDER |                    `string`                    | `"bin"`       |
-| SUI_DB_FOLDER  |                    `string`                    | `"db"`        |
-| SINGBOX_API    |                    `string`                    | -             |
-
-</details>
-
-## SSL Certificate
-
-<details>
-  <summary>Click for details</summary>
-
-### Certbot
-
-```bash
-snap install core; snap refresh core
-snap install --classic certbot
-ln -s /snap/bin/certbot /usr/bin/certbot
-
-certbot certonly --standalone --register-unsafely-without-email --non-interactive --agree-tos -d <Your Domain Name>
+```sh
+git clone --recurse-submodules https://github.com/ciallothu/s-ui-next.git
+cd s-ui-next
 ```
 
-</details>
+- Backend: Go `1.26.5`; the exact version is declared in `go.mod`.
+- Frontend: Vue and TypeScript in the [`frontend`](https://github.com/ciallothu/s-ui-next-frontend) submodule. Use `npm ci`, then `npm run build`.
+- Mobile: Flutter source lives in `mobile/`.
+- Full development and contribution instructions are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-## Stargazers over Time
-[![Stargazers over time](https://starchart.cc/ciallothu/s-ui-next.svg)](https://starchart.cc/ciallothu/s-ui-next)
+## Credits and License
+
+S-UI Next builds on [alireza0/s-ui](https://github.com/alireza0/s-ui) and [SagerNet/sing-box](https://github.com/SagerNet/sing-box). The Web frontend is maintained in [ciallothu/s-ui-next-frontend](https://github.com/ciallothu/s-ui-next-frontend).
+
+This project is distributed under the [GNU General Public License v3.0](LICENSE).

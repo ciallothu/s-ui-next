@@ -1,0 +1,136 @@
+name: Upstream dependency watch
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/upstream-tracking.json"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/upstream-watch.yml"
+      - "go.mod"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-watch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Compare upstream versions
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Compare tracked versions
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fetch_json() {
+            local url="$1"
+            local response
+            local attempt
+            for attempt in 1 2 3 4; do
+              if response="$(curl --fail --silent --show-error --location \
+                --header "Accept: application/vnd.github+json" \
+                --header "Authorization: Bearer $GH_TOKEN" \
+                --header "X-GitHub-Api-Version: 2022-11-28" \
+                "$url")" && jq -e . >/dev/null 2>&1 <<< "$response"; then
+                printf '%s\n' "$response"
+                return 0
+              fi
+              sleep "$((attempt * 2))"
+            done
+            printf 'Unable to fetch valid GitHub API JSON from %s\n' "$url" >&2
+            return 1
+          }
+
+          current_core="$(awk '$1 == "github.com/sagernet/sing-box" { print $2; exit }' go.mod)"
+          latest_core="$(fetch_json https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)"
+          latest_panel="$(fetch_json https://api.github.com/repos/alireza0/s-ui/releases/latest | jq -r .tag_name)"
+          reviewed_panel="$(jq -r .s_ui_reviewed_release .github/upstream-tracking.json)"
+          base_panel="$(jq -r .s_ui_base_release .github/upstream-tracking.json)"
+          tracked_cronet="$(jq -r .cronet_toolchain_commit .github/upstream-tracking.json)"
+          current_cronet="$(awk -F'"' '/CRONET_GO_VERSION:/ { print $2; exit }' .github/workflows/release.yml)"
+
+          upstream_go_mod="$(fetch_json https://api.github.com/repos/alireza0/s-ui/contents/go.mod | jq -r .content | base64 --decode)"
+          upstream_core="$(printf '%s\n' "$upstream_go_mod" | awk '$1 == "github.com/sagernet/sing-box" { print $2; exit }')"
+          upstream_release="$(fetch_json https://api.github.com/repos/alireza0/s-ui/contents/.github/workflows/release.yml | jq -r .content | base64 --decode)"
+          upstream_cronet="$(printf '%s\n' "$upstream_release" | awk -F'"' '/CRONET_GO_VERSION:/ { print $2; exit }')"
+
+          updates=()
+          if [[ "$current_core" != "$latest_core" ]]; then
+            updates+=("sing-box stable release: current $current_core, latest $latest_core")
+          fi
+          if [[ "$current_core" != "$upstream_core" ]]; then
+            updates+=("S-UI core adoption: current $current_core, upstream panel $upstream_core")
+          fi
+          if [[ "$reviewed_panel" != "$latest_panel" ]]; then
+            updates+=("S-UI release review: reviewed through $reviewed_panel, latest $latest_panel")
+          fi
+          if [[ "$current_cronet" != "$upstream_cronet" ]]; then
+            updates+=("Cronet build source: current $current_cronet, upstream panel $upstream_cronet")
+          fi
+          if [[ "$tracked_cronet" != "$current_cronet" ]]; then
+            updates+=("Cronet tracking metadata does not match the release workflow")
+          fi
+
+          updates_available=false
+          if (( ${#updates[@]} > 0 )); then
+            updates_available=true
+          fi
+
+          {
+            printf '# Upstream dependency status\n\n'
+            printf '| Component | Current | Upstream reference |\n'
+            printf '| --- | --- | --- |\n'
+            printf '| sing-box | `%s` | stable `%s`; S-UI `%s` |\n' "$current_core" "$latest_core" "$upstream_core"
+            printf '| S-UI release review | base `%s`; reviewed `%s` | latest `%s` |\n' "$base_panel" "$reviewed_panel" "$latest_panel"
+            printf '| Cronet build source | `%s` | S-UI `%s` |\n\n' "$current_cronet" "$upstream_cronet"
+            if [[ "$updates_available" == "true" ]]; then
+              printf 'Review required:\n\n'
+              for update in "${updates[@]}"; do
+                printf -- '- %s\n' "$update"
+              done
+            else
+              printf 'All tracked upstream versions are current.\n'
+            fi
+            printf '\n[Workflow run](https://github.com/%s/actions/runs/%s)\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+          } > upstream-status.md
+
+          cat upstream-status.md >> "$GITHUB_STEP_SUMMARY"
+          echo "updates_available=$updates_available" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update tracking issue
+        if: github.event_name != 'pull_request' && steps.versions.outputs.updates_available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          issue_title="Upstream dependency updates available"
+          issue_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,title --jq '[.[] | select(.title == "Upstream dependency updates available")] | first | .number // empty')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file upstream-status.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$issue_title" --body-file upstream-status.md
+          fi
+
+      - name: Close resolved tracking issue
+        if: github.event_name != 'pull_request' && steps.versions.outputs.updates_available == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          issue_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,title --jq '[.[] | select(.title == "Upstream dependency updates available")] | first | .number // empty')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY" --comment "All tracked upstream versions are current."
+          fi
