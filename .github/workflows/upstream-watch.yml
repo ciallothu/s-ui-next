@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - ".github/upstream-tracking.json"
+      - ".github/workflows/docker.yml"
       - ".github/workflows/release.yml"
       - ".github/workflows/upstream-watch.yml"
       - "go.mod"
@@ -63,6 +64,7 @@ jobs:
           base_panel="$(jq -r .s_ui_base_release .github/upstream-tracking.json)"
           tracked_cronet="$(jq -r .cronet_toolchain_commit .github/upstream-tracking.json)"
           current_cronet="$(awk -F'"' '/CRONET_GO_VERSION:/ { print $2; exit }' .github/workflows/release.yml)"
+          docker_cronet="$(awk -F'"' '/CRONET_GO_VERSION:/ { print $2; exit }' .github/workflows/docker.yml)"
 
           upstream_go_mod="$(fetch_json https://api.github.com/repos/alireza0/s-ui/contents/go.mod | jq -r .content | base64 --decode)"
           upstream_core="$(printf '%s\n' "$upstream_go_mod" | awk '$1 == "github.com/sagernet/sing-box" { print $2; exit }')"
@@ -82,6 +84,9 @@ jobs:
           if [[ "$current_cronet" != "$upstream_cronet" ]]; then
             updates+=("Cronet build source: current $current_cronet, upstream panel $upstream_cronet")
           fi
+          if [[ "$docker_cronet" != "$current_cronet" ]]; then
+            updates+=("Cronet build source differs between release and Docker workflows")
+          fi
           if [[ "$tracked_cronet" != "$current_cronet" ]]; then
             updates+=("Cronet tracking metadata does not match the release workflow")
           fi
@@ -97,7 +102,7 @@ jobs:
             printf '| --- | --- | --- |\n'
             printf '| sing-box | `%s` | stable `%s`; S-UI `%s` |\n' "$current_core" "$latest_core" "$upstream_core"
             printf '| S-UI release review | base `%s`; reviewed `%s` | latest `%s` |\n' "$base_panel" "$reviewed_panel" "$latest_panel"
-            printf '| Cronet build source | `%s` | S-UI `%s` |\n\n' "$current_cronet" "$upstream_cronet"
+            printf '| Cronet build source | release `%s`; Docker `%s` | S-UI `%s` |\n\n' "$current_cronet" "$docker_cronet" "$upstream_cronet"
             if [[ "$updates_available" == "true" ]]; then
               printf 'Review required:\n\n'
               for update in "${updates[@]}"; do
