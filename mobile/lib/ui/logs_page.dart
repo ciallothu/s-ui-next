@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_locale_context.dart';
+import '../core/connection_display.dart';
 import '../state/app_state.dart';
 import 'widgets.dart';
 
@@ -22,6 +23,8 @@ class _LogsPageState extends State<LogsPage> {
   int total = 0;
   bool loading = true;
   String? error;
+  final resolvingAddresses = <String>{};
+  final resolvedAddresses = <String>{};
 
   @override
   void initState() {
@@ -40,6 +43,8 @@ class _LogsPageState extends State<LogsPage> {
     setState(() {
       loading = true;
       error = null;
+      resolvingAddresses.clear();
+      resolvedAddresses.clear();
     });
     try {
       final result = Map<String, dynamic>.from(await context.read<AppState>().api!.get('logs', query: {
@@ -124,6 +129,7 @@ class _LogsPageState extends State<LogsPage> {
       _ => Colors.blue,
     };
     final connection = _connectionFromLog(item);
+    final lookupAddress = connectionLookupAddress(connection);
     final connectionMeta = connection == null
         ? null
         : _endpointSummary(context, _endpointInfo(connection, 'destinationInfo')) ?? _endpointSummary(context, _endpointInfo(connection, 'sourceInfo'));
@@ -141,7 +147,11 @@ class _LogsPageState extends State<LogsPage> {
           overflow: TextOverflow.ellipsis,
         ),
         trailing: Chip(label: Text(logLevel), side: BorderSide.none),
+        onExpansionChanged: (expanded) {
+          if (expanded) _resolveConnectionTarget(item);
+        },
         children: [
+          if (lookupAddress != null && resolvingAddresses.contains(lookupAddress)) const LinearProgressIndicator(minHeight: 2),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Align(
@@ -158,6 +168,33 @@ class _LogsPageState extends State<LogsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _resolveConnectionTarget(Map<String, dynamic> item) async {
+    final rawConnection = item['connection'];
+    if (rawConnection is! Map) return;
+    final connection = rawConnection;
+    final address = connectionLookupAddress(connection);
+    if (address == null || resolvingAddresses.contains(address) || resolvedAddresses.contains(address)) return;
+
+    final infoKey = connectionInfoKey(connection);
+    if (infoKey == null) return;
+    final current = connection[infoKey];
+    if (current is Map && connectionInfoComplete(current)) {
+      resolvedAddresses.add(address);
+      return;
+    }
+
+    setState(() => resolvingAddresses.add(address));
+    try {
+      final result = Map<String, dynamic>.from(await context.read<AppState>().api!.get('analytics/address-info', query: {'address': address}) as Map);
+      applyResolvedConnectionInfo(connection, result);
+      if (connectionInfoComplete(result)) resolvedAddresses.add(address);
+    } catch (_) {
+      // Keep the original log usable when ownership lookup is temporarily unavailable.
+    } finally {
+      if (mounted) setState(() => resolvingAddresses.remove(address));
+    }
   }
 }
 
@@ -177,18 +214,8 @@ Map<String, dynamic>? _endpointInfo(Map<String, dynamic> item, String key) {
 
 String? _endpointSummary(BuildContext context, Map<String, dynamic>? info) {
   if (info == null) return null;
-  final ip = info['ip']?.toString();
-  final host = info['host']?.toString();
-  final attribution = info['attribution']?.toString();
-  final isp = info['isp']?.toString();
-  final scope = _scopeLabel(context, info['scope']?.toString());
-  final parts = <String>[
-    if (ip != null && ip.isNotEmpty) ip else if (host != null && host.isNotEmpty) host,
-    if (attribution != null && attribution.isNotEmpty) attribution else if (scope.isNotEmpty) scope,
-    if (isp != null && isp.isNotEmpty) isp,
-  ];
-  if (parts.isEmpty) return null;
-  return parts.join(' · ');
+  final summary = connectionEndpointSummary(info, fallback: _scopeLabel(context, info['scope']?.toString()));
+  return summary.isEmpty ? null : summary;
 }
 
 List<Widget> _endpointDetailWidgets(BuildContext context, Map<String, dynamic> item) {
@@ -201,13 +228,11 @@ List<Widget> _endpointDetailWidgets(BuildContext context, Map<String, dynamic> i
 }
 
 List<Widget> _endpointLines(BuildContext context, String title, Map<String, dynamic> info) {
+  final target = connectionEndpointTarget(info);
+  final ownership = connectionEndpointOwnership(info, fallback: _scopeLabel(context, info['scope']?.toString()));
   final values = <MapEntry<String, String>>[
-    MapEntry(context.t('analytics.ipAddress'), info['ip']?.toString() ?? info['host']?.toString() ?? ''),
-    MapEntry(context.t('analytics.ipAttribution'), info['attribution']?.toString() ?? _scopeLabel(context, info['scope']?.toString())),
-    MapEntry(context.t('analytics.isp'), info['isp']?.toString() ?? ''),
-    MapEntry(context.t('analytics.asn'), info['asn']?.toString() ?? ''),
-    MapEntry(context.t('analytics.country'), info['country']?.toString() ?? ''),
-    MapEntry(context.t('analytics.network'), info['network']?.toString() ?? ''),
+    MapEntry(context.t('analytics.ipAddress'), target),
+    MapEntry(context.t('analytics.ipAttribution'), ownership),
   ].where((entry) => entry.value.isNotEmpty).toList();
   if (values.isEmpty) return const <Widget>[];
   return [

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_locale_context.dart';
+import '../core/connection_display.dart';
 import '../state/app_state.dart';
 import 'widgets.dart';
 
@@ -32,6 +33,8 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
   int upload = 0;
   int download = 0;
   String? error;
+  final resolvingAddresses = <String>{};
+  final resolvedAddresses = <String>{};
 
   @override
   void initState() {
@@ -54,6 +57,8 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
     setState(() {
       loading = true;
       error = null;
+      resolvingAddresses.clear();
+      resolvedAddresses.clear();
     });
     try {
       final query = <String, dynamic>{
@@ -391,6 +396,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
     final logLevel = item['level']?.toString() ?? 'INFO';
     final color = _levelColor(logLevel);
     final connection = _connectionFromLog(item);
+    final lookupAddress = connectionLookupAddress(connection);
     final connectionMeta = connection == null
         ? null
         : _endpointSummary(context, _endpointInfo(connection, 'destinationInfo')) ?? _endpointSummary(context, _endpointInfo(connection, 'sourceInfo'));
@@ -408,7 +414,11 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
           overflow: TextOverflow.ellipsis,
         ),
         trailing: Chip(label: Text(logLevel), side: BorderSide.none),
+        onExpansionChanged: (expanded) {
+          if (expanded) _resolveLogConnection(item);
+        },
         children: [
+          if (lookupAddress != null && resolvingAddresses.contains(lookupAddress)) const LinearProgressIndicator(minHeight: 2),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Align(
@@ -425,6 +435,46 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
         ],
       ),
     );
+  }
+
+  Future<Map<String, dynamic>> _resolveConnectionInfo(Map<String, dynamic> item) async {
+    final result = Map<String, dynamic>.from(item);
+    final address = connectionLookupAddress(result);
+    final infoKey = connectionInfoKey(result);
+    if (address == null || infoKey == null) return result;
+    final current = result[infoKey];
+    if (current is Map && connectionInfoComplete(current)) return result;
+    try {
+      final info = Map<String, dynamic>.from(await context.read<AppState>().api!.get('analytics/address-info', query: {'address': address}) as Map);
+      applyResolvedConnectionInfo(result, info);
+    } catch (_) {
+      // The raw connection remains available if enrichment cannot be reached.
+    }
+    return result;
+  }
+
+  Future<void> _resolveLogConnection(Map<String, dynamic> item) async {
+    final rawConnection = item['connection'];
+    if (rawConnection is! Map) return;
+    final address = connectionLookupAddress(rawConnection);
+    if (address == null || resolvingAddresses.contains(address) || resolvedAddresses.contains(address)) return;
+    final infoKey = connectionInfoKey(rawConnection);
+    if (infoKey == null) return;
+    final current = rawConnection[infoKey];
+    if (current is Map && connectionInfoComplete(current)) {
+      resolvedAddresses.add(address);
+      return;
+    }
+
+    setState(() => resolvingAddresses.add(address));
+    final resolved = await _resolveConnectionInfo(Map<String, dynamic>.from(rawConnection));
+    final resolvedInfo = resolved[infoKey];
+    if (resolvedInfo is Map) {
+      final info = Map<String, dynamic>.from(resolvedInfo);
+      applyResolvedConnectionInfo(rawConnection, info);
+      if (connectionInfoComplete(info)) resolvedAddresses.add(address);
+    }
+    if (mounted) setState(() => resolvingAddresses.remove(address));
   }
 
   Future<void> _showConnectionDetails(String resource, String tag) async {
@@ -476,34 +526,43 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
   }
 
   Future<void> _showConnectionLog(Map<String, dynamic> item) async {
+    final resolved = _resolveConnectionInfo(item);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * .9),
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(sheetContext).bottom),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(sheetContext.t('analytics.connectionLog'), style: Theme.of(sheetContext).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                _detailLine(sheetContext, sheetContext.t('logs.level'), item['level']?.toString()),
-                _detailLine(sheetContext, sheetContext.t('logs.time'), item['time']?.toString() ?? formatTimestamp(item['timestamp'])),
-                _detailLine(sheetContext, sheetContext.t('analytics.resource'), '${item['resource']}/${item['protocol']}[${item['tag']}]'),
-                _detailLine(sheetContext, sheetContext.t('analytics.user'), item['user']?.toString()),
-                _detailLine(sheetContext, sheetContext.t('analytics.destination'), item['destination']?.toString()),
-                _detailLine(sheetContext, sheetContext.t('analytics.source'), item['source']?.toString()),
-                ..._endpointDetailWidgets(sheetContext, item),
-                const Divider(height: 24),
-                Text(sheetContext.t('analytics.rawMessage'), style: Theme.of(sheetContext).textTheme.titleSmall),
-                const SizedBox(height: 8),
-                SelectableText(item['message']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace')),
-              ],
-            ),
-          ),
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: resolved,
+          initialData: item,
+          builder: (context, snapshot) {
+            final current = snapshot.data ?? item;
+            return ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * .9),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(sheetContext).bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(sheetContext.t('analytics.connectionLog'), style: Theme.of(sheetContext).textTheme.titleLarge),
+                    if (snapshot.connectionState != ConnectionState.done) const LinearProgressIndicator(minHeight: 2),
+                    const SizedBox(height: 12),
+                    _detailLine(sheetContext, sheetContext.t('logs.level'), current['level']?.toString()),
+                    _detailLine(sheetContext, sheetContext.t('logs.time'), current['time']?.toString() ?? formatTimestamp(current['timestamp'])),
+                    _detailLine(sheetContext, sheetContext.t('analytics.resource'), '${current['resource']}/${current['protocol']}[${current['tag']}]'),
+                    _detailLine(sheetContext, sheetContext.t('analytics.user'), current['user']?.toString()),
+                    _detailLine(sheetContext, sheetContext.t('analytics.destination'), current['destination']?.toString()),
+                    _detailLine(sheetContext, sheetContext.t('analytics.source'), current['source']?.toString()),
+                    ..._endpointDetailWidgets(sheetContext, current),
+                    const Divider(height: 24),
+                    Text(sheetContext.t('analytics.rawMessage'), style: Theme.of(sheetContext).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    SelectableText(current['message']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace')),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -611,18 +670,8 @@ Map<String, dynamic>? _endpointInfo(Map<String, dynamic> item, String key) {
 
 String? _endpointSummary(BuildContext context, Map<String, dynamic>? info) {
   if (info == null) return null;
-  final ip = info['ip']?.toString();
-  final host = info['host']?.toString();
-  final attribution = info['attribution']?.toString();
-  final isp = info['isp']?.toString();
-  final scope = _scopeLabel(context, info['scope']?.toString());
-  final parts = <String>[
-    if (ip != null && ip.isNotEmpty) ip else if (host != null && host.isNotEmpty) host,
-    if (attribution != null && attribution.isNotEmpty) attribution else if (scope.isNotEmpty) scope,
-    if (isp != null && isp.isNotEmpty) isp,
-  ];
-  if (parts.isEmpty) return null;
-  return parts.join(' · ');
+  final summary = connectionEndpointSummary(info, fallback: _scopeLabel(context, info['scope']?.toString()));
+  return summary.isEmpty ? null : summary;
 }
 
 List<Widget> _endpointDetailWidgets(BuildContext context, Map<String, dynamic> item) {
@@ -635,13 +684,11 @@ List<Widget> _endpointDetailWidgets(BuildContext context, Map<String, dynamic> i
 }
 
 List<Widget> _endpointLines(BuildContext context, String title, Map<String, dynamic> info) {
+  final target = connectionEndpointTarget(info);
+  final ownership = connectionEndpointOwnership(info, fallback: _scopeLabel(context, info['scope']?.toString()));
   final values = <MapEntry<String, String>>[
-    MapEntry(context.t('analytics.ipAddress'), info['ip']?.toString() ?? info['host']?.toString() ?? ''),
-    MapEntry(context.t('analytics.ipAttribution'), info['attribution']?.toString() ?? _scopeLabel(context, info['scope']?.toString())),
-    MapEntry(context.t('analytics.isp'), info['isp']?.toString() ?? ''),
-    MapEntry(context.t('analytics.asn'), info['asn']?.toString() ?? ''),
-    MapEntry(context.t('analytics.country'), info['country']?.toString() ?? ''),
-    MapEntry(context.t('analytics.network'), info['network']?.toString() ?? ''),
+    MapEntry(context.t('analytics.ipAddress'), target),
+    MapEntry(context.t('analytics.ipAttribution'), ownership),
   ].where((entry) => entry.value.isNotEmpty).toList();
   if (values.isEmpty) return const <Widget>[];
   return [

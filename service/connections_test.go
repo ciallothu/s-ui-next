@@ -2,6 +2,7 @@ package service
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/ciallothu/s-ui-next/logger"
@@ -103,6 +104,8 @@ func TestConnectionDomainInfoUsesCachedResolution(t *testing.T) {
 		isp:         "Example Network",
 		asn:         "64500",
 		country:     "ZZ",
+		region:      "Example Region",
+		city:        "Example City",
 		network:     "203.0.113.0/24",
 	}, positiveIPOwnerTTL)
 
@@ -113,8 +116,37 @@ func TestConnectionDomainInfoUsesCachedResolution(t *testing.T) {
 	if info.Host != host || info.IP != ip || info.Scope != "public" {
 		t.Fatalf("domain resolution was not applied: %#v", info)
 	}
-	if info.Country != "ZZ" || info.ASN != "64500" || info.ISP != "Example Network" {
+	if info.Country != "ZZ" || info.Region != "Example Region" || info.City != "Example City" || info.ASN != "64500" || info.ISP != "Example Network" {
 		t.Fatalf("resolved target ownership was not applied: %#v", info)
+	}
+}
+
+func TestParseIPWhoOwner(t *testing.T) {
+	addr := netip.MustParseAddr("104.21.10.20")
+	body := []byte(`{
+		"ip":"104.21.10.20",
+		"success":true,
+		"country":"United States",
+		"country_code":"US",
+		"region":"California",
+		"city":"Los Angeles",
+		"connection":{"asn":13335,"org":"Cloudflare, Inc.","isp":"Cloudflare, Inc."}
+	}`)
+	owner, ok := parseIPWhoOwner(body, addr)
+	if !ok {
+		t.Fatal("valid ownership response was rejected")
+	}
+	if owner.isp != "Cloudflare, Inc." || owner.asn != "13335" || owner.city != "Los Angeles" || owner.region != "California" || owner.country != "US" {
+		t.Fatalf("unexpected ownership response: %#v", owner)
+	}
+	if owner.attribution != "Cloudflare, Inc. · Los Angeles" {
+		t.Fatalf("unexpected attribution: %q", owner.attribution)
+	}
+}
+
+func TestResolveConnectionAddressRejectsOversizedInput(t *testing.T) {
+	if _, err := ResolveConnectionAddress(nil, strings.Repeat("a", maxConnectionAddressLength+1)); err == nil {
+		t.Fatal("oversized address should be rejected")
 	}
 }
 

@@ -83,7 +83,7 @@ func (a *ApiService) queryStructuredLogs(level, user, search string, start, end 
 		}
 		items = append(items, item)
 	}
-	service.EnrichConnectionEntriesOwners(connections, 32)
+	service.EnrichConnectionEntriesOwners(connections, 8)
 	return gin.H{"items": items, "total": total, "offset": offset, "limit": limit}, nil
 }
 
@@ -93,5 +93,10 @@ func (a *ApiService) GetStructuredLogs(c *gin.Context) {
 		queryInt64(c, "start"), queryInt64(c, "end"),
 		queryInt(c, "offset", 0), queryInt(c, "limit", 100),
 	)
+	jsonObj(c, result, err)
+}
+
+func (a *ApiService) GetConnectionAddressInfo(c *gin.Context) {
+	result, err := service.ResolveConnectionAddress(c.Request.Context(), c.Query("address"))
 	jsonObj(c, result, err)
 }

@@ -48,6 +48,8 @@ type ConnectionIPInfo struct {
 	ISP         string `json:"isp,omitempty"`
 	ASN         string `json:"asn,omitempty"`
 	Country     string `json:"country,omitempty"`
+	Region      string `json:"region,omitempty"`
+	City        string `json:"city,omitempty"`
 	Network     string `json:"network,omitempty"`
 }
 
@@ -149,7 +151,7 @@ func (s *StatsService) QueryConnections(filter ConnectionFilter) (*ConnectionQue
 	for index := range page {
 		pageEntries[index] = &page[index]
 	}
-	EnrichConnectionEntriesOwners(pageEntries, 32)
+	EnrichConnectionEntriesOwners(pageEntries, 8)
 	return &ConnectionQueryResult{
 		Items: page, Total: total, Offset: filter.Offset, Limit: filter.Limit,
 		Summary: summary, Parsed: len(items), Scanned: scanned,
@@ -338,7 +340,7 @@ func connectionIPInfoText(info *ConnectionIPInfo) string {
 		return ""
 	}
 	return strings.Join([]string{
-		info.Address, info.Host, info.Port, info.IP, info.Scope, info.Attribution, info.ISP, info.ASN, info.Country, info.Network,
+		info.Address, info.Host, info.Port, info.IP, info.Scope, info.Attribution, info.ISP, info.ASN, info.Country, info.Region, info.City, info.Network,
 	}, " ")
 }
 
