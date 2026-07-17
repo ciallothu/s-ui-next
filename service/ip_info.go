@@ -47,10 +47,10 @@ const (
 	positiveDomainResolutionTTL   = 10 * time.Minute
 	connectionOwnerLookupTimeout  = 900 * time.Millisecond
 	connectionDetailLookupTimeout = 4 * time.Second
-	connectionDNSRouterTimeout     = 700 * time.Millisecond
+	connectionDNSRouterTimeout    = 700 * time.Millisecond
 	connectionOwnerLookupWorkers  = 8
-	maxConnectionAddressLength     = 512
-	maxIPWhoResponseBytes          = 32 << 10
+	maxConnectionAddressLength    = 512
+	maxIPWhoResponseBytes         = 32 << 10
 )
 
 const ipWhoLookupBaseURL = "https://ipwho.is/"
@@ -596,7 +596,7 @@ type ipWhoResponse struct {
 	CountryCode string `json:"country_code"`
 	Region      string `json:"region"`
 	City        string `json:"city"`
-	Connection struct {
+	Connection  struct {
 		ASN int64  `json:"asn"`
 		Org string `json:"org"`
 		ISP string `json:"isp"`
