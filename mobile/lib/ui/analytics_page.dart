@@ -353,7 +353,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
   Widget _connectionTile(Map<String, dynamic> item, {bool openRaw = false}) {
     final sourceInfo = _endpointInfo(item, 'sourceInfo');
     final destinationInfo = _endpointInfo(item, 'destinationInfo');
-    final meta = _endpointSummary(context, sourceInfo) ?? _endpointSummary(context, destinationInfo);
+    final meta = _endpointSummary(context, destinationInfo) ?? _endpointSummary(context, sourceInfo);
     return ListTile(
       dense: true,
       leading: Icon(item['resource'] == 'outbound' ? Icons.call_made : Icons.call_received),
@@ -393,7 +393,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
     final connection = _connectionFromLog(item);
     final connectionMeta = connection == null
         ? null
-        : _endpointSummary(context, _endpointInfo(connection, 'sourceInfo')) ?? _endpointSummary(context, _endpointInfo(connection, 'destinationInfo'));
+        : _endpointSummary(context, _endpointInfo(connection, 'destinationInfo')) ?? _endpointSummary(context, _endpointInfo(connection, 'sourceInfo'));
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ExpansionTile(
@@ -430,15 +430,14 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
   Future<void> _showConnectionDetails(String resource, String tag) async {
     if (tag.isEmpty) return;
     try {
-      final result = Map<String, dynamic>.from(await context.read<AppState>().api!.get('analytics/connections', query: {
+      final request = context.read<AppState>().api!.get('analytics/connections', query: {
         'resource': resource,
         'tag': tag,
         'search': search.text.trim(),
         'start': unixStartOfDay(start),
         'end': unixEndOfDay(end),
         'limit': 500,
-      }) as Map);
-      final items = List<dynamic>.from(result['items'] as List? ?? const []);
+      }).then((value) => Map<String, dynamic>.from(value as Map));
       if (!mounted) return;
       await showModalBottomSheet<void>(
         context: context,
@@ -447,17 +446,27 @@ class _AnalyticsPageState extends State<AnalyticsPage> with SingleTickerProvider
           expand: false,
           initialChildSize: .75,
           maxChildSize: .95,
-          builder: (context, controller) => ListView(
-            controller: controller,
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text('${sheetContext.t('analytics.connectionDetails')} · $resource/$tag', style: Theme.of(sheetContext).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              if (items.isEmpty)
-                EmptyState(label: sheetContext.t('analytics.noConnections'))
-              else
-                for (final raw in items) _connectionTile(Map<String, dynamic>.from(raw as Map), openRaw: true),
-            ],
+          builder: (context, controller) => FutureBuilder<Map<String, dynamic>>(
+            future: request,
+            builder: (context, snapshot) {
+              final items = List<dynamic>.from(snapshot.data?['items'] as List? ?? const []);
+              return ListView(
+                controller: controller,
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text('${sheetContext.t('analytics.connectionDetails')} · $resource/$tag', style: Theme.of(sheetContext).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  if (snapshot.connectionState != ConnectionState.done)
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 32), child: Center(child: CircularProgressIndicator()))
+                  else if (snapshot.hasError)
+                    EmptyState(label: snapshot.error.toString(), icon: Icons.error_outline)
+                  else if (items.isEmpty)
+                    EmptyState(label: sheetContext.t('analytics.noConnections'))
+                  else
+                    for (final raw in items) _connectionTile(Map<String, dynamic>.from(raw as Map), openRaw: true),
+                ],
+              );
+            },
           ),
         ),
       );
@@ -620,8 +629,8 @@ List<Widget> _endpointDetailWidgets(BuildContext context, Map<String, dynamic> i
   final source = _endpointInfo(item, 'sourceInfo');
   final destination = _endpointInfo(item, 'destinationInfo');
   return [
-    if (source != null) ..._endpointLines(context, context.t('analytics.source'), source),
     if (destination != null) ..._endpointLines(context, context.t('analytics.destination'), destination),
+    if (source != null) ..._endpointLines(context, context.t('analytics.source'), source),
   ];
 }
 

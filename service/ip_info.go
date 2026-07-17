@@ -8,7 +8,10 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/sagernet/sing-box/adapter"
 )
 
 type cachedIPOwner struct {
@@ -24,10 +27,19 @@ type cachedIPOwnerEntry struct {
 	expiresAt time.Time
 }
 
+type cachedDomainResolutionEntry struct {
+	addresses []netip.Addr
+	expiresAt time.Time
+}
+
 const (
-	maxIPOwnerCacheEntries = 4096
-	positiveIPOwnerTTL     = 24 * time.Hour
-	negativeIPOwnerTTL     = 5 * time.Minute
+	maxIPOwnerCacheEntries       = 4096
+	maxDomainResolutionEntries   = 4096
+	positiveIPOwnerTTL           = 24 * time.Hour
+	negativeIPOwnerTTL           = 5 * time.Minute
+	positiveDomainResolutionTTL  = 10 * time.Minute
+	connectionOwnerLookupTimeout = 900 * time.Millisecond
+	connectionOwnerLookupWorkers = 8
 )
 
 var ipOwnerCache = struct {
@@ -35,26 +47,37 @@ var ipOwnerCache = struct {
 	entries map[string]cachedIPOwnerEntry
 }{entries: make(map[string]cachedIPOwnerEntry)}
 
+var domainResolutionCache = struct {
+	sync.Mutex
+	entries map[string]cachedDomainResolutionEntry
+}{entries: make(map[string]cachedDomainResolutionEntry)}
+
 type ConnectionOwnerLookupBudget struct {
-	remaining int
+	remaining atomic.Int64
 }
 
 func NewConnectionOwnerLookupBudget(limit int) *ConnectionOwnerLookupBudget {
 	if limit < 0 {
 		limit = 0
 	}
-	return &ConnectionOwnerLookupBudget{remaining: limit}
+	budget := &ConnectionOwnerLookupBudget{}
+	budget.remaining.Store(int64(limit))
+	return budget
 }
 
 func (b *ConnectionOwnerLookupBudget) allowLookup() bool {
 	if b == nil {
 		return true
 	}
-	if b.remaining <= 0 {
-		return false
+	for {
+		remaining := b.remaining.Load()
+		if remaining <= 0 {
+			return false
+		}
+		if b.remaining.CompareAndSwap(remaining, remaining-1) {
+			return true
+		}
 	}
-	b.remaining--
-	return true
 }
 
 func describeConnectionAddress(value string) *ConnectionIPInfo {
@@ -91,11 +114,11 @@ func describeConnectionAddress(value string) *ConnectionIPInfo {
 	return info
 }
 
-func enrichConnectionEntryOwners(entry *ConnectionEntry, budget *ConnectionOwnerLookupBudget) {
-	enrichConnectionIPInfo(entry.SourceInfo, budget)
-	enrichConnectionIPInfo(entry.DestinationInfo, budget)
+func enrichConnectionEntryOwners(ctx context.Context, entry *ConnectionEntry, budget *ConnectionOwnerLookupBudget) {
+	enrichConnectionIPInfo(ctx, entry.DestinationInfo, budget)
+	enrichConnectionIPInfo(ctx, entry.SourceInfo, budget)
 	if entry.RemoteInfo != entry.SourceInfo && entry.RemoteInfo != entry.DestinationInfo {
-		enrichConnectionIPInfo(entry.RemoteInfo, budget)
+		enrichConnectionIPInfo(ctx, entry.RemoteInfo, budget)
 	}
 }
 
@@ -103,21 +126,189 @@ func EnrichConnectionEntryOwners(entry *ConnectionEntry) {
 	if entry == nil {
 		return
 	}
-	enrichConnectionEntryOwners(entry, NewConnectionOwnerLookupBudget(8))
+	EnrichConnectionEntriesOwners([]*ConnectionEntry{entry}, 8)
 }
 
 func EnrichConnectionEntryOwnersWithBudget(entry *ConnectionEntry, budget *ConnectionOwnerLookupBudget) {
 	if entry == nil {
 		return
 	}
-	enrichConnectionEntryOwners(entry, budget)
+	ctx, cancel := context.WithTimeout(context.Background(), connectionOwnerLookupTimeout)
+	defer cancel()
+	enrichConnectionEntryOwners(ctx, entry, budget)
 }
 
-func enrichConnectionIPInfo(info *ConnectionIPInfo, budget *ConnectionOwnerLookupBudget) {
-	if info == nil || info.Scope != "public" || info.IP == "" {
+type connectionInfoTarget struct {
+	info    ConnectionIPInfo
+	targets []*ConnectionIPInfo
+}
+
+type connectionInfoResult struct {
+	index int
+	info  ConnectionIPInfo
+}
+
+// EnrichConnectionEntriesOwners resolves and describes only the requested page.
+// Lookups are deduplicated and share one deadline so log APIs remain responsive.
+func EnrichConnectionEntriesOwners(entries []*ConnectionEntry, limit int) {
+	targets := collectConnectionInfoTargets(entries)
+	if len(targets) == 0 {
 		return
 	}
-	if info.ASN != "" || info.ISP != "" {
+
+	ctx, cancel := context.WithTimeout(context.Background(), connectionOwnerLookupTimeout)
+	defer cancel()
+	budget := NewConnectionOwnerLookupBudget(limit)
+	jobs := make(chan int, len(targets))
+	results := make(chan connectionInfoResult, len(targets))
+	for index := range targets {
+		jobs <- index
+	}
+	close(jobs)
+
+	workerCount := connectionOwnerLookupWorkers
+	if len(targets) < workerCount {
+		workerCount = len(targets)
+	}
+	var workers sync.WaitGroup
+	workers.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				info := targets[index].info
+				enrichConnectionIPInfo(ctx, &info, budget)
+				results <- connectionInfoResult{index: index, info: info}
+			}
+		}()
+	}
+	workers.Wait()
+	close(results)
+
+	for result := range results {
+		for _, target := range targets[result.index].targets {
+			applyConnectionInfo(target, result.info)
+		}
+	}
+}
+
+func collectConnectionInfoTargets(entries []*ConnectionEntry) []connectionInfoTarget {
+	targets := make([]connectionInfoTarget, 0)
+	indexByKey := make(map[string]int)
+	seenPointers := make(map[*ConnectionIPInfo]bool)
+	add := func(info *ConnectionIPInfo) {
+		if info == nil || seenPointers[info] {
+			return
+		}
+		seenPointers[info] = true
+		key := connectionInfoCacheKey(info)
+		if key == "" {
+			return
+		}
+		if index, loaded := indexByKey[key]; loaded {
+			targets[index].targets = append(targets[index].targets, info)
+			return
+		}
+		indexByKey[key] = len(targets)
+		targets = append(targets, connectionInfoTarget{info: *info, targets: []*ConnectionIPInfo{info}})
+	}
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		add(entry.DestinationInfo)
+	}
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		add(entry.RemoteInfo)
+	}
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		add(entry.SourceInfo)
+	}
+	return targets
+}
+
+func connectionInfoCacheKey(info *ConnectionIPInfo) string {
+	if info.IP != "" {
+		return "ip:" + strings.ToLower(strings.TrimSpace(info.IP))
+	}
+	if info.Host != "" {
+		return "host:" + strings.ToLower(strings.TrimSpace(info.Host))
+	}
+	address := strings.ToLower(strings.TrimSpace(info.Address))
+	if address == "" {
+		return ""
+	}
+	return "address:" + address
+}
+
+func applyConnectionInfo(target *ConnectionIPInfo, source ConnectionIPInfo) {
+	if target == nil {
+		return
+	}
+	target.IP = source.IP
+	target.Scope = source.Scope
+	target.Attribution = source.Attribution
+	target.ISP = source.ISP
+	target.ASN = source.ASN
+	target.Country = source.Country
+	target.Network = source.Network
+}
+
+func enrichConnectionIPInfo(ctx context.Context, info *ConnectionIPInfo, budget *ConnectionOwnerLookupBudget) {
+	if info == nil {
+		return
+	}
+	lookupAllowed := false
+	allowLookup := func() bool {
+		if lookupAllowed {
+			return true
+		}
+		lookupAllowed = budget.allowLookup()
+		return lookupAllowed
+	}
+
+	if info.IP == "" && info.Scope == "domain" && info.Host != "" {
+		addresses, loaded := loadCachedDomainResolution(info.Host)
+		if !loaded {
+			if !allowLookup() {
+				return
+			}
+			var err error
+			addresses, err = lookupConnectionDomain(ctx, info.Host)
+			if err != nil || len(addresses) == 0 {
+				return
+			}
+			storeCachedDomainResolution(info.Host, addresses)
+		}
+		resolved, loaded := selectConnectionAddress(addresses)
+		if !loaded {
+			return
+		}
+		info.IP = resolved.String()
+		info.Scope = classifyIPScope(resolved)
+		info.Attribution = scopeAttribution(info.Scope)
+		info.ISP = scopeISP(info.Scope)
+	}
+
+	if info.IP == "" {
+		return
+	}
+	addr, err := netip.ParseAddr(info.IP)
+	if err != nil {
+		return
+	}
+	if info.Scope == "" || info.Scope == "domain" {
+		info.Scope = classifyIPScope(addr)
+		info.Attribution = scopeAttribution(info.Scope)
+		info.ISP = scopeISP(info.Scope)
+	}
+	if info.Scope != "public" || info.ASN != "" || info.ISP != "" {
 		return
 	}
 	if owner, hit, ok := cachedPublicIPOwner(info.IP); hit {
@@ -126,16 +317,85 @@ func enrichConnectionIPInfo(info *ConnectionIPInfo, budget *ConnectionOwnerLooku
 		}
 		return
 	}
-	if !budget.allowLookup() {
+	if !allowLookup() {
 		return
 	}
-	addr, err := netip.ParseAddr(info.IP)
-	if err != nil {
-		return
-	}
-	if owner, ok := lookupPublicIPOwner(addr); ok {
+	if owner, ok := lookupPublicIPOwner(ctx, addr); ok {
 		applyIPOwner(info, owner)
 	}
+}
+
+func lookupConnectionDomain(ctx context.Context, host string) ([]netip.Addr, error) {
+	if corePtr != nil && corePtr.IsRunning() {
+		instance := corePtr.GetInstance()
+		if instance != nil && instance.DNSRouter() != nil {
+			return instance.DNSRouter().Lookup(ctx, host, adapter.DNSQueryOptions{})
+		}
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+}
+
+func selectConnectionAddress(addresses []netip.Addr) (netip.Addr, bool) {
+	for _, address := range addresses {
+		if address.IsValid() && classifyIPScope(address) == "public" {
+			return address, true
+		}
+	}
+	for _, address := range addresses {
+		if address.IsValid() {
+			return address, true
+		}
+	}
+	return netip.Addr{}, false
+}
+
+func loadCachedDomainResolution(host string) ([]netip.Addr, bool) {
+	key := strings.ToLower(strings.TrimSpace(host))
+	now := time.Now()
+	domainResolutionCache.Lock()
+	defer domainResolutionCache.Unlock()
+	entry, loaded := domainResolutionCache.entries[key]
+	if !loaded {
+		return nil, false
+	}
+	if !now.Before(entry.expiresAt) {
+		delete(domainResolutionCache.entries, key)
+		return nil, false
+	}
+	return append([]netip.Addr(nil), entry.addresses...), true
+}
+
+func storeCachedDomainResolution(host string, addresses []netip.Addr) {
+	key := strings.ToLower(strings.TrimSpace(host))
+	if key == "" || len(addresses) == 0 {
+		return
+	}
+	now := time.Now()
+	domainResolutionCache.Lock()
+	defer domainResolutionCache.Unlock()
+	if len(domainResolutionCache.entries) >= maxDomainResolutionEntries {
+		for cachedHost, entry := range domainResolutionCache.entries {
+			if !now.Before(entry.expiresAt) {
+				delete(domainResolutionCache.entries, cachedHost)
+			}
+		}
+	}
+	if len(domainResolutionCache.entries) >= maxDomainResolutionEntries {
+		for cachedHost := range domainResolutionCache.entries {
+			delete(domainResolutionCache.entries, cachedHost)
+			break
+		}
+	}
+	domainResolutionCache.entries[key] = cachedDomainResolutionEntry{
+		addresses: append([]netip.Addr(nil), addresses...),
+		expiresAt: now.Add(positiveDomainResolutionTTL),
+	}
+}
+
+func clearConnectionDomainResolutionCache() {
+	domainResolutionCache.Lock()
+	domainResolutionCache.entries = make(map[string]cachedDomainResolutionEntry)
+	domainResolutionCache.Unlock()
 }
 
 func cachedPublicIPOwner(ip string) (cachedIPOwner, bool, bool) {
@@ -227,21 +487,6 @@ func scopeISP(scope string) string {
 	}
 }
 
-func lookupPublicIPOwner(addr netip.Addr) (cachedIPOwner, bool) {
-	key := addr.String()
-	if owner, hit, ok := loadCachedIPOwner(key); hit {
-		return owner, ok
-	}
-
-	owner, ok := queryCymruOwner(addr)
-	if !ok {
-		storeCachedIPOwner(key, cachedIPOwner{}, negativeIPOwnerTTL)
-		return cachedIPOwner{}, false
-	}
-	storeCachedIPOwner(key, owner, positiveIPOwnerTTL)
-	return owner, true
-}
-
 func loadCachedIPOwner(key string) (cachedIPOwner, bool, bool) {
 	now := time.Now()
 	ipOwnerCache.Lock()
@@ -278,10 +523,24 @@ func storeCachedIPOwner(key string, owner cachedIPOwner, ttl time.Duration) {
 	ipOwnerCache.entries[key] = cachedIPOwnerEntry{owner: owner, expiresAt: now.Add(ttl)}
 }
 
-func queryCymruOwner(addr netip.Addr) (cachedIPOwner, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
-	defer cancel()
+func lookupPublicIPOwner(ctx context.Context, addr netip.Addr) (cachedIPOwner, bool) {
+	key := addr.String()
+	if owner, hit, ok := loadCachedIPOwner(key); hit {
+		return owner, ok
+	}
 
+	owner, ok := queryCymruOwner(ctx, addr)
+	if !ok {
+		if ctx.Err() == nil {
+			storeCachedIPOwner(key, cachedIPOwner{}, negativeIPOwnerTTL)
+		}
+		return cachedIPOwner{}, false
+	}
+	storeCachedIPOwner(key, owner, positiveIPOwnerTTL)
+	return owner, true
+}
+
+func queryCymruOwner(ctx context.Context, addr netip.Addr) (cachedIPOwner, bool) {
 	resolver := net.DefaultResolver
 	txts, err := resolver.LookupTXT(ctx, cymruOriginName(addr))
 	if err != nil || len(txts) == 0 {

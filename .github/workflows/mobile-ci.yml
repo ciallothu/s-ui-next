@@ -12,6 +12,7 @@ on:
       - "frontend/**"
       - "mobile/**"
       - "api/**"
+      - "core/**"
       - "database/**"
       - "service/**"
       - "sub/**"
@@ -30,6 +31,7 @@ on:
       - "frontend/**"
       - "mobile/**"
       - "api/**"
+      - "core/**"
       - "database/**"
       - "service/**"
       - "sub/**"
@@ -52,6 +54,43 @@ env:
   MOBILE_ORG: io.sui
 
 jobs:
+  app-icon:
+    name: Render mobile app icon
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive
+
+      - name: Render 1024px icon from vector source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends librsvg2-bin
+          sed -E 's/viewBox="[^"]+"/viewBox="0 0 48 48"/' frontend/src/assets/logo.svg > "$RUNNER_TEMP/mobile-icon.svg"
+          rsvg-convert --width 1024 --height 1024 --output "$RUNNER_TEMP/logo.png" "$RUNNER_TEMP/mobile-icon.svg"
+          python3 - <<'PY'
+          import os
+          import struct
+
+          path = os.path.join(os.environ["RUNNER_TEMP"], "logo.png")
+          with open(path, "rb") as icon:
+              header = icon.read(24)
+          if header[:8] != b"\x89PNG\r\n\x1a\n":
+              raise SystemExit("rendered app icon is not a PNG")
+          width, height = struct.unpack(">II", header[16:24])
+          if (width, height) != (1024, 1024):
+              raise SystemExit(f"unexpected app icon size: {width}x{height}")
+          PY
+
+      - name: Upload rendered app icon
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-app-icon-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/logo.png
+          if-no-files-found: error
+          retention-days: 1
+
   backend-api:
     name: Validate backend and security
     runs-on: ubuntu-latest
@@ -128,6 +167,7 @@ jobs:
   android-arm64:
     name: Check Android arm64
     runs-on: ubuntu-latest
+    needs: app-icon
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6.0.2
@@ -140,13 +180,19 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
+      - name: Download rendered app icon
+        uses: actions/download-artifact@v8
+        with:
+          name: mobile-app-icon-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mobile-icon
+
       - name: Prepare Android project
         run: |
           flutter create --platforms=android --project-name "$MOBILE_PROJECT" --org "$MOBILE_ORG" "$RUNNER_TEMP/sui-mobile"
           rm -rf "$RUNNER_TEMP/sui-mobile/lib" "$RUNNER_TEMP/sui-mobile/test"
           cp -R mobile/. "$RUNNER_TEMP/sui-mobile/"
           mkdir -p "$RUNNER_TEMP/sui-mobile/assets"
-          cp frontend/src/assets/logo.png "$RUNNER_TEMP/sui-mobile/assets/logo.png"
+          cp "$RUNNER_TEMP/mobile-icon/logo.png" "$RUNNER_TEMP/sui-mobile/assets/logo.png"
           sed -i 's/ios: true/ios: false/' "$RUNNER_TEMP/sui-mobile/pubspec.yaml"
           sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$RUNNER_TEMP/sui-mobile/android/app/src/main/AndroidManifest.xml"
           sed -i 's/android:label="sui_mobile"/android:label="S-UI Next"/' "$RUNNER_TEMP/sui-mobile/android/app/src/main/AndroidManifest.xml"
@@ -170,6 +216,7 @@ jobs:
   iphone-arm64:
     name: Check iPhone arm64
     runs-on: macos-latest
+    needs: app-icon
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6.0.2
@@ -182,13 +229,19 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
+      - name: Download rendered app icon
+        uses: actions/download-artifact@v8
+        with:
+          name: mobile-app-icon-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mobile-icon
+
       - name: Prepare iPhone project
         run: |
           flutter create --platforms=ios --project-name "$MOBILE_PROJECT" --org "$MOBILE_ORG" "$RUNNER_TEMP/sui-mobile"
           rm -rf "$RUNNER_TEMP/sui-mobile/lib" "$RUNNER_TEMP/sui-mobile/test"
           cp -R mobile/. "$RUNNER_TEMP/sui-mobile/"
           mkdir -p "$RUNNER_TEMP/sui-mobile/assets"
-          sips -z 1024 1024 frontend/src/assets/logo.png --out "$RUNNER_TEMP/sui-mobile/assets/logo.png"
+          cp "$RUNNER_TEMP/mobile-icon/logo.png" "$RUNNER_TEMP/sui-mobile/assets/logo.png"
           sed -i '' 's/android: true/android: false/' "$RUNNER_TEMP/sui-mobile/pubspec.yaml"
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$RUNNER_TEMP/sui-mobile/ios/Runner/Info.plist" || true
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$RUNNER_TEMP/sui-mobile/ios/Runner/Info.plist" || true

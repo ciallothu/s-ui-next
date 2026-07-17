@@ -126,7 +126,7 @@ class _LogsPageState extends State<LogsPage> {
     final connection = _connectionFromLog(item);
     final connectionMeta = connection == null
         ? null
-        : _endpointSummary(context, _endpointInfo(connection, 'sourceInfo')) ?? _endpointSummary(context, _endpointInfo(connection, 'destinationInfo'));
+        : _endpointSummary(context, _endpointInfo(connection, 'destinationInfo')) ?? _endpointSummary(context, _endpointInfo(connection, 'sourceInfo'));
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ExpansionTile(
@@ -195,8 +195,8 @@ List<Widget> _endpointDetailWidgets(BuildContext context, Map<String, dynamic> i
   final source = _endpointInfo(item, 'sourceInfo');
   final destination = _endpointInfo(item, 'destinationInfo');
   return [
-    if (source != null) ..._endpointLines(context, context.t('analytics.source'), source),
     if (destination != null) ..._endpointLines(context, context.t('analytics.destination'), destination),
+    if (source != null) ..._endpointLines(context, context.t('analytics.source'), source),
   ];
 }
 

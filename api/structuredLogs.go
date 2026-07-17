@@ -70,19 +70,20 @@ func (a *ApiService) queryStructuredLogs(level, user, search string, start, end 
 		pageEnd = total
 	}
 	items := make([]structuredLogEntry, 0, pageEnd-offset)
-	ownerBudget := service.NewConnectionOwnerLookupBudget(32)
+	connections := make([]*service.ConnectionEntry, 0, pageEnd-offset)
 	for _, entry := range entries[offset:pageEnd] {
 		item := structuredLogEntry{LogEntry: entry}
 		if connection, ok := service.ParseConnectionLog(entry); ok {
 			service.AttachConnectionSourceFromCandidates(&connection, connectionCandidates)
-			service.EnrichConnectionEntryOwnersWithBudget(&connection, ownerBudget)
 			if item.User == "" {
 				item.User = connection.User
 			}
 			item.Connection = &connection
+			connections = append(connections, item.Connection)
 		}
 		items = append(items, item)
 	}
+	service.EnrichConnectionEntriesOwners(connections, 32)
 	return gin.H{"items": items, "total": total, "offset": offset, "limit": limit}, nil
 }
 

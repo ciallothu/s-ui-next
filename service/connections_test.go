@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/netip"
 	"testing"
 
 	"github.com/ciallothu/s-ui-next/logger"
@@ -88,6 +89,42 @@ func TestConnectionIPInfo(t *testing.T) {
 	}
 	if entry.SourceInfo == nil || entry.SourceInfo.IP != "10.0.0.2" || entry.SourceInfo.Scope != "private" || entry.SourceInfo.Port != "61748" {
 		t.Fatalf("source info missing: %#v", entry.SourceInfo)
+	}
+}
+
+func TestConnectionDomainInfoUsesCachedResolution(t *testing.T) {
+	const (
+		host = "target.example"
+		ip   = "203.0.113.10"
+	)
+	storeCachedDomainResolution(host, []netip.Addr{netip.MustParseAddr(ip)})
+	storeCachedIPOwner(ip, cachedIPOwner{
+		attribution: "AS64500 · Example Network · ZZ",
+		isp:         "Example Network",
+		asn:         "64500",
+		country:     "ZZ",
+		network:     "203.0.113.0/24",
+	}, positiveIPOwnerTTL)
+
+	info := describeConnectionAddress(host + ":443")
+	entry := &ConnectionEntry{DestinationInfo: info, RemoteInfo: info}
+	EnrichConnectionEntriesOwners([]*ConnectionEntry{entry}, 0)
+
+	if info.Host != host || info.IP != ip || info.Scope != "public" {
+		t.Fatalf("domain resolution was not applied: %#v", info)
+	}
+	if info.Country != "ZZ" || info.ASN != "64500" || info.ISP != "Example Network" {
+		t.Fatalf("resolved target ownership was not applied: %#v", info)
+	}
+}
+
+func TestConnectionDestinationFilterMatchesSummaryTag(t *testing.T) {
+	item := ConnectionEntry{Destination: "target.example:443", Remote: "target.example:443"}
+	if !connectionMatches(item, ConnectionFilter{Resource: "destination", Tag: "target.example"}) {
+		t.Fatal("destination summary tag should match a connection with a port")
+	}
+	if connectionMatches(item, ConnectionFilter{Resource: "destination", Tag: "other.example"}) {
+		t.Fatal("unrelated destination should not match")
 	}
 }
 

@@ -138,6 +138,7 @@ func (s *ConfigService) StartCore() error {
 		logger.Error("start sing-box err:", err.Error())
 		return err
 	}
+	clearConnectionDomainResolutionCache()
 	logger.Info("sing-box started")
 	return nil
 }
@@ -171,6 +172,7 @@ func (s *ConfigService) restartCoreWithRaw(config []byte) error {
 	if err := corePtr.Start(config); err != nil {
 		return err
 	}
+	clearConnectionDomainResolutionCache()
 	if !corePtr.IsRunning() {
 		return common.NewError("sing-box did not report a running state after apply")
 	}

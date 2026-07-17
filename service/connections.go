@@ -128,15 +128,14 @@ func (s *StatsService) QueryConnections(filter ConnectionFilter) (*ConnectionQue
 	AttachConnectionSources(parsed)
 
 	items := make([]ConnectionEntry, 0, len(parsed))
-	ownerBudget := NewConnectionOwnerLookupBudget(32)
 	for _, item := range parsed {
 		if !connectionMatches(item, filter) {
 			continue
 		}
-		enrichConnectionEntryOwners(&item, ownerBudget)
 		items = append(items, item)
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Timestamp > items[j].Timestamp })
+	summary := summarizeConnections(items)
 	total := len(items)
 	pageEnd := filter.Offset + filter.Limit
 	if pageEnd > total {
@@ -144,11 +143,16 @@ func (s *StatsService) QueryConnections(filter ConnectionFilter) (*ConnectionQue
 	}
 	page := []ConnectionEntry{}
 	if filter.Offset < total {
-		page = items[filter.Offset:pageEnd]
+		page = append(page, items[filter.Offset:pageEnd]...)
 	}
+	pageEntries := make([]*ConnectionEntry, len(page))
+	for index := range page {
+		pageEntries[index] = &page[index]
+	}
+	EnrichConnectionEntriesOwners(pageEntries, 32)
 	return &ConnectionQueryResult{
 		Items: page, Total: total, Offset: filter.Offset, Limit: filter.Limit,
-		Summary: summarizeConnections(items), Parsed: len(items), Scanned: scanned,
+		Summary: summary, Parsed: len(items), Scanned: scanned,
 	}, nil
 }
 
@@ -247,7 +251,7 @@ func connectionMatches(item ConnectionEntry, filter ConnectionFilter) bool {
 			return false
 		}
 	case "destination", "remote":
-		if tag != "" && item.Remote != tag && item.Destination != tag && item.Source != tag {
+		if tag != "" && normalizeRemote(item.Remote) != tag && normalizeRemote(item.Destination) != tag && normalizeRemote(item.Source) != tag {
 			return false
 		}
 	default:
