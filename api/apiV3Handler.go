@@ -74,6 +74,7 @@ func (a *APIv3Handler) initRouter(g *gin.RouterGroup) {
 	protected.GET("/analytics/stats", a.stats)
 	protected.GET("/analytics/usage", a.usage)
 	protected.GET("/analytics/connections", a.connections)
+	protected.GET("/analytics/address-info", a.addressInfo)
 	protected.GET("/logs", a.logs)
 	protected.GET("/changes", a.changes)
 
@@ -522,6 +523,15 @@ func (a *APIv3Handler) connections(c *gin.Context) {
 	})
 	if err != nil {
 		v3Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	v3OK(c, result)
+}
+
+func (a *APIv3Handler) addressInfo(c *gin.Context) {
+	result, err := service.ResolveConnectionAddress(c.Request.Context(), c.Query("address"))
+	if err != nil {
+		v3Error(c, http.StatusBadRequest, err)
 		return
 	}
 	v3OK(c, result)

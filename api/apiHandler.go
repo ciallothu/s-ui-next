@@ -133,6 +133,8 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		a.ApiService.GetFilteredStats(c)
 	case "analytics-connections":
 		a.ApiService.GetConnectionAnalytics(c)
+	case "analytics-address-info":
+		a.ApiService.GetConnectionAddressInfo(c)
 	case "changes":
 		a.ApiService.CheckChanges(c)
 	case "keypairs":

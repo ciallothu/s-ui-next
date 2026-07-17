@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,7 +23,10 @@ type cachedIPOwner struct {
 	isp         string
 	asn         string
 	country     string
+	region      string
+	city        string
 	network     string
+	geolocated  bool
 }
 
 type cachedIPOwnerEntry struct {
@@ -33,14 +40,22 @@ type cachedDomainResolutionEntry struct {
 }
 
 const (
-	maxIPOwnerCacheEntries       = 4096
-	maxDomainResolutionEntries   = 4096
-	positiveIPOwnerTTL           = 24 * time.Hour
-	negativeIPOwnerTTL           = 5 * time.Minute
-	positiveDomainResolutionTTL  = 10 * time.Minute
-	connectionOwnerLookupTimeout = 900 * time.Millisecond
-	connectionOwnerLookupWorkers = 8
+	maxIPOwnerCacheEntries        = 4096
+	maxDomainResolutionEntries    = 4096
+	positiveIPOwnerTTL            = 24 * time.Hour
+	negativeIPOwnerTTL            = 5 * time.Minute
+	positiveDomainResolutionTTL   = 10 * time.Minute
+	connectionOwnerLookupTimeout  = 900 * time.Millisecond
+	connectionDetailLookupTimeout = 4 * time.Second
+	connectionDNSRouterTimeout    = 700 * time.Millisecond
+	connectionOwnerLookupWorkers  = 8
+	maxConnectionAddressLength    = 512
+	maxIPWhoResponseBytes         = 32 << 10
 )
+
+const ipWhoLookupBaseURL = "https://ipwho.is/"
+
+var ipOwnerHTTPClient = &http.Client{Timeout: connectionDetailLookupTimeout}
 
 var ipOwnerCache = struct {
 	sync.Mutex
@@ -257,7 +272,30 @@ func applyConnectionInfo(target *ConnectionIPInfo, source ConnectionIPInfo) {
 	target.ISP = source.ISP
 	target.ASN = source.ASN
 	target.Country = source.Country
+	target.Region = source.Region
+	target.City = source.City
 	target.Network = source.Network
+}
+
+func ResolveConnectionAddress(ctx context.Context, value string) (*ConnectionIPInfo, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, fmt.Errorf("address is required")
+	}
+	if len(value) > maxConnectionAddressLength {
+		return nil, fmt.Errorf("address is too long")
+	}
+	info := describeConnectionAddress(value)
+	if info == nil || info.Host == "" {
+		return nil, fmt.Errorf("invalid address")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, connectionDetailLookupTimeout)
+	defer cancel()
+	enrichConnectionIPInfo(lookupCtx, info, nil)
+	return info, nil
 }
 
 func enrichConnectionIPInfo(ctx context.Context, info *ConnectionIPInfo, budget *ConnectionOwnerLookupBudget) {
@@ -311,7 +349,8 @@ func enrichConnectionIPInfo(ctx context.Context, info *ConnectionIPInfo, budget 
 	if info.Scope != "public" || info.ASN != "" || info.ISP != "" {
 		return
 	}
-	if owner, hit, ok := cachedPublicIPOwner(info.IP); hit {
+	requireGeolocation := budget == nil
+	if owner, hit, ok := cachedPublicIPOwner(info.IP); hit && (!requireGeolocation || (ok && owner.geolocated)) {
 		if ok {
 			applyIPOwner(info, owner)
 		}
@@ -320,7 +359,7 @@ func enrichConnectionIPInfo(ctx context.Context, info *ConnectionIPInfo, budget 
 	if !allowLookup() {
 		return
 	}
-	if owner, ok := lookupPublicIPOwner(ctx, addr); ok {
+	if owner, ok := lookupPublicIPOwner(ctx, addr, requireGeolocation); ok {
 		applyIPOwner(info, owner)
 	}
 }
@@ -329,7 +368,12 @@ func lookupConnectionDomain(ctx context.Context, host string) ([]netip.Addr, err
 	if corePtr != nil && corePtr.IsRunning() {
 		instance := corePtr.GetInstance()
 		if instance != nil && instance.DNSRouter() != nil {
-			return instance.DNSRouter().Lookup(ctx, host, adapter.DNSQueryOptions{})
+			routerCtx, cancel := context.WithTimeout(ctx, connectionDNSRouterTimeout)
+			addresses, err := instance.DNSRouter().Lookup(routerCtx, host, adapter.DNSQueryOptions{})
+			cancel()
+			if err == nil && len(addresses) > 0 {
+				return addresses, nil
+			}
 		}
 	}
 	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
@@ -405,6 +449,8 @@ func cachedPublicIPOwner(ip string) (cachedIPOwner, bool, bool) {
 func applyIPOwner(info *ConnectionIPInfo, owner cachedIPOwner) {
 	info.ASN = owner.asn
 	info.Country = owner.country
+	info.Region = owner.region
+	info.City = owner.city
 	info.Network = owner.network
 	info.Attribution = owner.attribution
 	info.ISP = owner.isp
@@ -523,13 +569,16 @@ func storeCachedIPOwner(key string, owner cachedIPOwner, ttl time.Duration) {
 	ipOwnerCache.entries[key] = cachedIPOwnerEntry{owner: owner, expiresAt: now.Add(ttl)}
 }
 
-func lookupPublicIPOwner(ctx context.Context, addr netip.Addr) (cachedIPOwner, bool) {
+func lookupPublicIPOwner(ctx context.Context, addr netip.Addr, requireGeolocation bool) (cachedIPOwner, bool) {
 	key := addr.String()
-	if owner, hit, ok := loadCachedIPOwner(key); hit {
+	if owner, hit, ok := loadCachedIPOwner(key); hit && (!requireGeolocation || (ok && owner.geolocated)) {
 		return owner, ok
 	}
 
-	owner, ok := queryCymruOwner(ctx, addr)
+	owner, ok := queryIPWhoOwner(ctx, addr)
+	if !ok && ctx.Err() == nil {
+		owner, ok = queryCymruOwner(ctx, addr)
+	}
 	if !ok {
 		if ctx.Err() == nil {
 			storeCachedIPOwner(key, cachedIPOwner{}, negativeIPOwnerTTL)
@@ -538,6 +587,94 @@ func lookupPublicIPOwner(ctx context.Context, addr netip.Addr) (cachedIPOwner, b
 	}
 	storeCachedIPOwner(key, owner, positiveIPOwnerTTL)
 	return owner, true
+}
+
+type ipWhoResponse struct {
+	IP          string `json:"ip"`
+	Success     bool   `json:"success"`
+	Country     string `json:"country"`
+	CountryCode string `json:"country_code"`
+	Region      string `json:"region"`
+	City        string `json:"city"`
+	Connection  struct {
+		ASN int64  `json:"asn"`
+		Org string `json:"org"`
+		ISP string `json:"isp"`
+	} `json:"connection"`
+}
+
+func queryIPWhoOwner(ctx context.Context, addr netip.Addr) (cachedIPOwner, bool) {
+	requestURL := ipWhoLookupBaseURL + url.PathEscape(addr.String()) + "?fields=success,ip,country,country_code,region,city,connection"
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return cachedIPOwner{}, false
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", "s-ui-next")
+	response, err := ipOwnerHTTPClient.Do(request)
+	if err != nil {
+		return cachedIPOwner{}, false
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return cachedIPOwner{}, false
+	}
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxIPWhoResponseBytes+1))
+	if err != nil || len(body) > maxIPWhoResponseBytes {
+		return cachedIPOwner{}, false
+	}
+	return parseIPWhoOwner(body, addr)
+}
+
+func parseIPWhoOwner(body []byte, addr netip.Addr) (cachedIPOwner, bool) {
+	var payload ipWhoResponse
+	if json.Unmarshal(body, &payload) != nil || !payload.Success {
+		return cachedIPOwner{}, false
+	}
+	returnedIP, err := netip.ParseAddr(strings.TrimSpace(payload.IP))
+	if err != nil || returnedIP.Unmap() != addr.Unmap() {
+		return cachedIPOwner{}, false
+	}
+
+	owner := cachedIPOwner{
+		isp:        firstNonEmptyString(payload.Connection.Org, payload.Connection.ISP),
+		country:    firstNonEmptyString(payload.CountryCode, payload.Country),
+		region:     strings.TrimSpace(payload.Region),
+		city:       strings.TrimSpace(payload.City),
+		geolocated: true,
+	}
+	if payload.Connection.ASN > 0 {
+		owner.asn = strconv.FormatInt(payload.Connection.ASN, 10)
+	}
+	owner.attribution = formatIPOwnerAttribution(owner)
+	if owner.attribution == "" && owner.asn == "" {
+		return cachedIPOwner{}, false
+	}
+	return owner, true
+}
+
+func formatIPOwnerAttribution(owner cachedIPOwner) string {
+	parts := make([]string, 0, 2)
+	if owner.isp != "" {
+		parts = append(parts, owner.isp)
+	} else if owner.asn != "" {
+		parts = append(parts, "AS"+owner.asn)
+	}
+	location := firstNonEmptyString(owner.city, owner.region, owner.country)
+	if location != "" {
+		parts = append(parts, location)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func queryCymruOwner(ctx context.Context, addr netip.Addr) (cachedIPOwner, bool) {
