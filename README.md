@@ -1,129 +1,129 @@
 # S-UI Next
 
-**A sing-box management panel for web and mobile**
+**面向 Web 和移动端的 sing-box 管理面板**
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[简体中文](README.md) | [English](README.en.md)
 
-[![Latest release](https://img.shields.io/github/v/release/ciallothu/s-ui-next.svg)](https://github.com/ciallothu/s-ui-next/releases/latest)
+[![最新版本](https://img.shields.io/github/v/release/ciallothu/s-ui-next.svg)](https://github.com/ciallothu/s-ui-next/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ciallothu/s-ui-next)](https://goreportcard.com/report/github.com/ciallothu/s-ui-next)
-[![Downloads](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)](https://github.com/ciallothu/s-ui-next/releases)
-[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![下载量](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)](https://github.com/ciallothu/s-ui-next/releases)
+[![许可证](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-S-UI Next is a downstream project based on [alireza0/s-ui](https://github.com/alireza0/s-ui). It keeps the original panel and database model while adding a versioned API, Android and iPhone management apps, stronger administrator authentication, searchable traffic and connection records, safer subscription links, and transactional WireGuard management.
+S-UI Next 是基于 [alireza0/s-ui](https://github.com/alireza0/s-ui) 继续维护的下游项目。它保留原有面板和数据库模型，在此基础上加入版本化 API、Android 与 iPhone 管理 App、管理员多因素认证、可检索的流量与连接记录、更加稳妥的订阅链接，以及事务化的 WireGuard 管理。
 
-The embedded core currently follows `sing-box v1.13.14`. Existing Web management, API v2, database, and subscription interfaces remain available, so an existing S-UI installation can be migrated without rebuilding its configuration from scratch.
+当前内置核心使用 `sing-box v1.13.14`。原有 Web 管理方式、API v2、数据库和订阅接口继续保留，已有 S-UI 数据可以迁移，不需要重新录入整套配置。
 
-> Use this project only where it is legal to do so. You are responsible for the configuration you deploy and the traffic carried by it.
+> 请只在当地法律允许的范围内使用本项目。部署配置及其承载的流量由使用者自行负责。
 
-## What S-UI Next Adds
+## S-UI Next 增加了什么
 
-### Web panel and configuration
+### Web 面板与配置管理
 
-- Manage clients, inbounds, outbounds, endpoints, services, TLS, DNS, routing rules, and global sing-box settings from one panel.
-- Use structured editors for day-to-day configuration or switch to raw JSON when a sing-box field is not represented by the form.
-- Manage users individually or in bulk, including traffic quota, expiry, group, enable/disable state, and subscription options.
-- View system state, online users, resource traffic, connection details, logs, administrator changes, and historical usage without leaving the panel.
-- Keep historical charts stable until they are refreshed, or enable the separate real-time mode when live traffic is needed.
-- Handle long usernames, IPv6 addresses, targets, and log messages with fixed desktop columns, horizontal scrolling, and a compact mobile layout.
-- Use dark or light themes in English, Farsi, Vietnamese, Simplified Chinese, Traditional Chinese, Russian, Japanese, French, or Latin.
+- 在同一面板中管理用户、入站、出站、Endpoint、服务、TLS、DNS、路由规则和 sing-box 全局配置。
+- 常用配置使用结构化表单，也可以随时切换到原始 JSON，处理表单尚未覆盖的 sing-box 字段。
+- 支持单独或批量管理用户，包括流量上限、到期时间、分组、启用状态和订阅选项。
+- 面板内可以查看系统状态、在线用户、资源流量、连接详情、系统日志、管理员变更记录和历史用量。
+- 历史流量图保持稳定，不会自动改变查看区间；需要实时数据时可以单独开启实时模式。
+- 连接详情能够正确处理长用户名、IPv6 地址、长目标地址和长日志。桌面端使用稳定列宽与横向滚动，小屏幕使用紧凑详情布局。
+- 支持深色与浅色主题，以及英语、波斯语、越南语、简体中文、繁体中文、俄语、日语、法语和拉丁语。
 
-### Mobile app
+### 手机 App
 
-The Flutter app in [`mobile/`](mobile/README.md) talks directly to `/apiv3`; it is not a WebView wrapper.
+[`mobile/`](mobile/README.md) 中的 Flutter App 直接调用 `/apiv3`，不是 WebView 封装。
 
-- Android arm64 APK and unsigned iPhone arm64 IPA are available from the Releases page.
-- The dashboard, users, resources, TLS, core configuration, analytics, logs, administrators, settings, backup, and tools pages follow the Web panel's management model.
-- Resource and configuration screens provide both visual editing and raw JSON. Numeric lists such as ports, user IDs, and WireGuard reserved values retain their JSON types.
-- A username/password login can create a dedicated mobile API token. Tokens, panel addresses, and custom headers are kept in Android Keystore or iOS Keychain backed secure storage.
-- Connection profiles accept arbitrary request headers and include dedicated fields for Cloudflare Access Service Tokens.
-- Multiple panels can be saved at the same time. The panel switcher sits beside the current panel name at the top of the navigation drawer and is also available before login.
-- Switching panels rebuilds the active view and reloads dashboard, resource, configuration, analytics, administration, and tools data automatically. No manual pull-to-refresh is required.
-- Existing single-panel profiles are migrated automatically. A normal logout keeps the saved profile; revoking the token removes that panel's local credentials.
+- 提供 Android arm64 APK 和未签名的 iPhone arm64 IPA。
+- 首页、用户、资源、TLS、核心配置、统计、日志、管理员、设置、备份和工具等页面与 Web 面板采用同一套管理模型。
+- 资源和配置同时支持可视化编辑与原始 JSON。端口、用户 ID、WireGuard reserved 等数字列表会保持正确的数据类型。
+- 可以使用管理员账号密码登录并创建独立的移动端 API Token。Token、面板地址和自定义 Header 保存在 Android Keystore 或 iOS Keychain 支持的安全存储中。
+- 连接配置支持任意请求 Header，并提供 Cloudflare Access Service Token 专用字段。
+- 可以同时保存多个控制面板。切换入口位于侧边栏顶部当前面板名称旁，未登录时也可以从连接页选择其他面板。
+- 切换面板后，首页、资源、配置、统计、管理和工具等数据会自动重新加载，不需要手动下拉刷新，也不会继续显示上一个面板的数据。
+- 旧的单面板连接会自动迁移。普通退出会保留已保存面板；撤销 Token 并退出时会删除该面板在本机保存的凭据。
 
 ### API v3
 
-`/apiv3` is the stable JSON interface used by the mobile app and is also suitable for third-party clients.
+`/apiv3` 是移动端使用的稳定 JSON 接口，也可以供其他客户端接入。
 
-- Password login, API token issue/list/revoke, authenticated bootstrap, panel metadata, status, and online users.
-- CRUD and bulk operations for clients, inbounds, outbounds, endpoints, services, TLS, global configuration, and settings.
-- User usage, resource statistics, parsed connections, system logs, and administrator audit history with server-side search, time filters, and bounded pagination.
-- Database backup import/export, sing-box configuration export, panel/core restart, link and subscription conversion, key generation, and outbound checks.
-- Consistent success/error envelopes and standard HTTP status codes. Bearer tokens are preferred; legacy token headers remain supported for existing clients.
+- 管理员账号密码登录，API Token 签发、查询与撤销，初始化数据、面板信息、运行状态和在线用户。
+- 用户、入站、出站、Endpoint、服务、TLS、全局配置和设置的增删改查与批量操作。
+- 用户用量、资源统计、连接记录、系统日志和管理员审计，支持服务端搜索、时间筛选和受限分页。
+- 数据库备份导入导出、sing-box 配置导出、面板与核心重启、链接与订阅转换、密钥生成和出站检查。
+- 统一的成功与错误响应，并使用对应的 HTTP 状态码。推荐使用 Bearer Token，同时兼容旧客户端使用的 Token Header。
 
-See [`docs/mobile-api.md`](docs/mobile-api.md) for routes, parameters, and response conventions.
+接口路径、参数和响应格式见 [`docs/mobile-api.md`](docs/mobile-api.md)。
 
-### Administrator authentication
+### 管理员身份认证
 
-- OIDC single sign-on with configurable issuer, client credentials, scopes, username claim, and an allow-list for external identities.
-- TOTP two-factor authentication with one-time recovery codes.
-- WebAuthn passkeys for registration and passwordless login, with automatic RP ID and origin detection behind common reverse proxies.
-- Passkey names derived from the authenticator AAGUID when available. Known providers include Bitwarden, 1Password, iCloud Keychain, Google Password Manager, Windows Hello, Dashlane, Keeper, NordPass, Proton Pass, and KeePassXC.
-- Privacy-preserving or unknown authenticators fall back to a name based on platform, attachment type, and transports. Names can still be edited manually.
-- Passwords are stored with bcrypt. Legacy plaintext administrator records are upgraded after a successful login.
-- Web sessions use HttpOnly cookies, and the login router verifies the server-side session rather than depending on JavaScript access to the cookie.
+- OIDC 单点登录，可配置 Issuer、Client ID、Client Secret、Scopes、用户名 Claim 和允许登录的外部身份。
+- TOTP 两步验证，并提供一次性恢复码。
+- WebAuthn 通行密钥，支持注册和免密码登录；常见反向代理环境下可以自动识别 RP ID 和 Origin。
+- 在认证器提供 AAGUID 时自动识别通行密钥名称。目前覆盖 Bitwarden、1Password、iCloud 钥匙串、Google Password Manager、Windows Hello、Dashlane、Keeper、NordPass、Proton Pass 和 KeePassXC 等常见提供方。
+- 对隐藏 AAGUID 或尚未收录的认证器，会根据系统平台、认证器类型和传输方式生成合适的名称，也可以在添加后手动改名。
+- 管理员密码使用 bcrypt 保存；旧数据库中的明文密码会在成功登录后自动迁移。
+- Web 登录使用 HttpOnly Session Cookie，前端通过服务端会话状态判断是否已经登录。
 
-### Analytics, logs, and connection attribution
+### 流量统计、日志与连接归属
 
-- Aggregate usage by user and inspect resource statistics by tag and date range.
-- Search parsed connections by user, inbound, outbound, endpoint, target, source, or message text.
-- Enrich source, destination, and remote addresses with IP, network type, ASN, organization, and location data where available. Private and reserved networks are identified without unnecessary external lookups.
-- Browse structured system logs and administrator change history with user, level, date, and text filters.
-- Use the same analytics and connection-detail model in Web and mobile views.
+- 按用户汇总用量，并按资源、Tag 和时间范围查看统计。
+- 按用户、入站、出站、Endpoint、目标地址、来源地址或消息内容搜索连接记录。
+- 在可获得数据时，为来源、目标和远端地址补充 IP、网络类型、ASN、组织和地区信息；私有与保留网段会在本地识别。
+- 系统日志和管理员配置变更记录支持用户、级别、日期与关键词筛选。
+- Web 与手机 App 使用相同的统计和连接详情数据模型。
 
-### Subscriptions and client privacy
+### 订阅与用户隐私
 
-- New clients receive random opaque subscription IDs, so generated public URLs do not expose a username. Legacy username links remain readable for upgrades and older clients.
-- Subscription user information can independently expose upload, download, quota, expiry, and remaining quota in the node name.
-- Link, JSON, and Clash subscriptions continue to support external links and subscriptions while applying stricter URL, domain, size, and data validation.
-- Disabled subscription information no longer leaks a partial `Subscription-Userinfo` header, and incomplete metadata is handled without panics.
+- 新用户使用随机且不可猜测的订阅 ID，生成的公开链接不会直接暴露用户名。旧版用户名订阅链接继续兼容，便于已有部署升级。
+- 可分别控制订阅信息中的上传量、下载量、总量、到期时间，以及节点名称中的剩余额度。
+- Link、JSON 和 Clash 订阅继续支持外部链接与外部订阅，同时对 URL、域名、响应大小和数据格式进行校验。
+- 关闭订阅信息后不会残留不完整的 `Subscription-Userinfo`，缺失的订阅元数据也不会造成异常。
 
-### WireGuard endpoint management
+### WireGuard Endpoint 管理
 
-WireGuard endpoints use a dedicated editor and backend service rather than treating every field as interchangeable sing-box JSON.
+WireGuard 使用独立的编辑器和后端服务，不再把所有字段当作含义相同的普通 JSON 处理。
 
-- Separate server endpoint addresses, virtual allocation networks, peer address ownership, client routes, and the public UDP endpoint exported to clients.
-- Generate private keys and PSKs with secure randomness. Secret values are redacted in normal resource responses and preserved when a redacted form is saved.
-- Export a controlled client configuration or QR code only through an explicit action.
-- Choose safe route presets for WireGuard virtual networks, a single peer, custom networks, or an explicit full tunnel.
-- Support roaming clients, fixed remote nodes, and site gateways with separate local and remote site CIDRs.
-- Optionally route traffic between peers through the S-UI Next server using a managed rule table. Equivalent user-authored rules are not duplicated or removed.
-- Validate IPv4/IPv6 host addresses, prefixes, peer ownership, routes, public endpoint host/port, and conflicting configuration before saving.
-- **Save** stores a validated configuration without changing the running core. **Save & apply** validates the complete generated configuration, restarts sing-box synchronously, checks its state, and restores the previous runtime if applying the change fails.
+- 分开管理服务端 Endpoint 地址、虚拟分配网段、Peer 地址归属、客户端路由，以及导出给客户端的公网 UDP 入口。
+- 私钥和 PSK 使用安全随机源生成。普通资源接口只返回脱敏值，保存脱敏表单时会保留原有密钥。
+- 客户端配置和二维码必须通过明确的导出操作生成。
+- 提供 WireGuard 虚拟网段、单个 Peer、自定义网段和全局隧道等路由预设，默认不会无意导出全局代理配置。
+- 支持地址会变化的普通客户端、固定远端节点，以及带本地和远端站点网段的站点网关。
+- 可以通过 S-UI Next 服务器转发同一 Endpoint 内 Peer 之间的流量。相关规则由独立表管理，不会重复或删除用户自己编写的等价规则。
+- 保存前校验 IPv4/IPv6 主机地址、前缀、Peer 地址归属、路由、公网入口和冲突配置。
+- **保存**只写入经过校验的配置，不改变当前核心；**保存并应用**会校验完整配置、同步重启 sing-box、确认运行状态，并在失败时恢复上一份可运行配置。
 
-### Security and data safety
+### 安全与数据保护
 
-- Login rate limiting and bounded authentication sessions reduce brute-force and resource exhaustion risk.
-- Configuration changes are validated before they reach sing-box. Applying a configuration checks the restarted core and restores the previous working state on failure.
-- Database backup import validates the uploaded database, replaces it atomically, and restores the previous database if activation fails.
-- Security-sensitive identifiers and keys use cryptographically secure randomness.
-- External requests have timeouts and response-size limits; panel addresses, domains, links, subscriptions, and generated configuration are validated before use.
-- Frontend content is rendered without unsafe dynamic HTML, and failed requests do not silently replace valid panel data.
+- 登录接口带有限流，认证会话数量受到约束，降低暴力尝试和资源耗尽风险。
+- 配置写入前会先进行校验；应用失败时恢复上一份可运行状态，避免核心停在半更新状态。
+- 数据库备份导入会先检查上传文件，再进行原子替换；新数据库无法启用时会恢复旧数据库。
+- Token、订阅 ID、密钥和其他安全敏感值使用密码学安全随机源生成。
+- 外部请求设置超时和响应大小上限，面板地址、域名、链接、订阅和生成配置在使用前会经过校验。
+- 前端不会直接插入未经处理的动态 HTML，请求失败也不会静默覆盖已经有效的面板数据。
 
-## Supported Protocols
+## 支持的协议
 
-| Category | Protocols and modes |
+| 分类 | 协议与模式 |
 | --- | --- |
-| General | Mixed, SOCKS, HTTP, HTTPS, Direct, Redirect, TProxy |
-| Proxy | VLESS, VMess, Trojan, Shadowsocks, ShadowTLS |
-| Modern transports | Hysteria, Hysteria2, TUIC, Naive |
-| Endpoints | WireGuard, Tailscale, WARP |
-| Routing and security | XTLS, Reality, uTLS, ACME, gVisor, PROXY Protocol, transparent proxying |
+| 通用 | Mixed、SOCKS、HTTP、HTTPS、Direct、Redirect、TProxy |
+| 代理协议 | VLESS、VMess、Trojan、Shadowsocks、ShadowTLS |
+| 现代传输 | Hysteria、Hysteria2、TUIC、Naive |
+| Endpoint | WireGuard、Tailscale、WARP |
+| 路由与安全 | XTLS、Reality、uTLS、ACME、gVisor、PROXY Protocol、透明代理 |
 
-Support ultimately follows the embedded sing-box version and the build tags used by each release target.
+具体可用字段仍以当前内置 sing-box 版本和对应平台的构建能力为准。
 
-## Downloads
+## 下载
 
-| Target | Architectures | Artifact |
+| 目标 | 架构 | 格式 |
 | --- | --- | --- |
-| Linux server | amd64, arm64, armv7, armv6, armv5, 386, s390x | `.tar.gz` |
-| Windows server | amd64, arm64 | `.zip` |
-| Android app | arm64 | `.apk` |
-| iPhone app | arm64 | unsigned `.ipa` |
-| GHCR image | linux/amd64, linux/386, linux/arm64/v8, linux/arm/v7, linux/arm/v6 | OCI image |
+| Linux 服务端 | amd64、arm64、armv7、armv6、armv5、386、s390x | `.tar.gz` |
+| Windows 服务端 | amd64、arm64 | `.zip` |
+| Android App | arm64 | `.apk` |
+| iPhone App | arm64 | 未签名 `.ipa` |
+| GHCR 镜像 | linux/amd64、linux/386、linux/arm64/v8、linux/arm/v7、linux/arm/v6 | OCI 镜像 |
 
-Download the current packages from [GitHub Releases](https://github.com/ciallothu/s-ui-next/releases/latest). The iPhone package is not signed and must be signed with your own Apple Developer identity before installation.
+安装包可以从 [GitHub Releases](https://github.com/ciallothu/s-ui-next/releases/latest) 下载。iPhone 安装包没有签名，需要使用自己的 Apple Developer 身份签名后安装。
 
-## Quick Start
+## 快速开始
 
 ### Docker Compose
 
@@ -133,9 +133,9 @@ curl -fsSLO https://raw.githubusercontent.com/ciallothu/s-ui-next/main/docker-co
 docker compose up -d
 ```
 
-The compose file stores the database in `./db`, certificates in `./cert`, and exposes the default panel and subscription ports.
+Compose 默认将数据库保存在 `./db`，证书保存在 `./cert`，并开放面板和订阅端口。
 
-### Docker CLI
+### Docker 命令
 
 ```sh
 mkdir -p s-ui-next/db s-ui-next/cert
@@ -150,94 +150,94 @@ docker run -d \
   ghcr.io/ciallothu/s-ui-next:latest
 ```
 
-### Linux packages
+### Linux 安装包
 
-1. Download `s-ui-next-<tag>-linux-<arch>.tar.gz` from the latest release.
-2. Extract it and place the `s-ui-next` directory under `/usr/local/`.
-3. Install `s-ui-next.sh` as `/usr/bin/s-ui-next` and copy `s-ui-next.service` to `/etc/systemd/system/`.
-4. Run `systemctl daemon-reload && systemctl enable --now s-ui-next`.
-5. Use `s-ui-next` for the interactive management menu.
+1. 从最新 Release 下载适合当前架构的 Linux 压缩包。
+2. 解压后将其中的 `s-ui-next` 目录放到 `/usr/local/`。
+3. 将 `s-ui-next.sh` 安装为 `/usr/bin/s-ui-next`，并把 `s-ui-next.service` 复制到 `/etc/systemd/system/`。
+4. 执行 `systemctl daemon-reload && systemctl enable --now s-ui-next`。
+5. 以后可以运行 `s-ui-next` 进入管理菜单。
 
-### Windows packages
+### Windows 安装包
 
-1. Download the matching Windows ZIP from the latest release.
-2. Extract it and run `install-windows.bat` as Administrator.
-3. Use `s-ui-next-windows.bat` for service management.
+1. 从最新 Release 下载对应架构的 Windows ZIP。
+2. 解压后以管理员身份运行 `install-windows.bat`。
+3. 使用 `s-ui-next-windows.bat` 管理服务。
 
-### Mobile packages
+### 手机安装包
 
-- Install the Android arm64 APK directly on a compatible device.
-- Sign the unsigned iPhone arm64 IPA with your own certificate before installing it.
-- Add the panel URL, credentials or API token, and any reverse-proxy headers on the connection screen.
+- Android arm64 设备可以直接安装 APK。
+- iPhone arm64 IPA 需要自行签名后安装。
+- 在连接页填写面板地址、账号密码或 API Token，以及反向代理需要的自定义 Header。
 
-## Default Settings
+## 默认设置
 
-| Setting | Default |
+| 项目 | 默认值 |
 | --- | --- |
-| Panel URL | `http://<host>:2095/app/` |
-| Subscription URL | `http://<host>:2096/sub/` |
-| Initial database account | `admin` / `admin` |
+| 面板地址 | `http://<服务器地址>:2095/app/` |
+| 订阅地址 | `http://<服务器地址>:2096/sub/` |
+| 初始数据库账号 | `admin` / `admin` |
 
-Change the initial credentials and publish the panel through HTTPS before exposing it to an untrusted network. Ports, paths, and administrator credentials can be changed from the management menu or the Web panel.
+首次部署后请立即修改初始账号密码，并通过 HTTPS 对外提供管理面板。端口、路径和管理员凭据可以通过管理菜单或 Web 面板修改。
 
-## Authentication Setup
+## 身份认证配置
 
-Authentication options are under **Settings → Login & identity** and **Admins → Login security**.
+认证功能位于 **设置 → 登录与身份认证** 和 **管理员 → 登录安全**。
 
 ### OIDC / SSO
 
-Configure the issuer URL, client ID, client secret, scopes, username claim, and allowed identities. For the default Web Path, register this callback with the identity provider:
+填写 Issuer URL、Client ID、Client Secret、Scopes、用户名 Claim 和允许登录的身份。默认 Web Path 对应的回调地址为：
 
 ```text
 https://panel.example.com/app/api/oidc-callback
 ```
 
-If the Web Path changes, the callback path must change with it. The username claim defaults to `preferred_username`, then falls back to `email` and `sub`.
+修改 Web Path 后，回调路径也必须同步修改。用户名 Claim 默认使用 `preferred_username`，取不到时依次回退到 `email` 和 `sub`。
 
-### TOTP / 2FA
+### TOTP / 两步验证
 
-Enable TOTP for an administrator from **Admins → Login security**. Save the generated recovery codes immediately; each code is valid once.
+在 **管理员 → 登录安全** 中为管理员启用 TOTP。生成恢复码后请立即妥善保存，每个恢复码只能使用一次。
 
-### WebAuthn passkeys
+### WebAuthn 通行密钥
 
-Enable passkeys globally, then register them for each administrator. RP ID and allowed origins can normally remain empty: S-UI Next derives them from the browser origin and trusted `Forwarded`, `X-Forwarded-Host`, and `X-Forwarded-Proto` headers.
+先在设置中全局启用通行密钥，再为管理员添加。通常可以留空 RP ID 和允许的 Origin，S-UI Next 会根据浏览器 Origin 以及可信的 `Forwarded`、`X-Forwarded-Host`、`X-Forwarded-Proto` 自动识别反向代理后的地址。
 
-For unusual proxy layouts, set the RP ID to a domain such as `panel.example.com` and allowed origins to complete origins such as `https://panel.example.com`. WebAuthn requires HTTPS except on localhost-style development origins.
+特殊代理结构可以手动设置。RP ID 只填写域名，例如 `panel.example.com`；Origin 需要填写完整来源，例如 `https://panel.example.com`。除 localhost 开发环境外，WebAuthn 需要 HTTPS。
 
-## WireGuard Configuration Notes
+## WireGuard 配置要点
 
-- **Server endpoint addresses** identify S-UI Next itself and are normally host routes such as `10.66.66.1/32` and `fd66:66:66::1/128`.
-- **Virtual network prefixes** are allocation ranges such as `10.66.66.0/24` and `fd66:66:66::/64`; they are not written into the endpoint `address` field.
-- **Server peer AllowedIPs** assign source ownership and should normally be unique `/32` and `/128` routes.
-- **Client AllowedIPs** choose destination traffic sent through the tunnel. New peers default to the WireGuard virtual networks; `0.0.0.0/0` and `::/0` are emitted only by the full-tunnel preset.
-- **Client endpoint host and port** must point to the public UDP listener. Do not reuse the Web panel hostname unless it also accepts WireGuard UDP traffic.
-- **Regular clients** leave the runtime peer endpoint dynamic, which suits phones, laptops, and devices behind NAT. **Fixed remote nodes** use an explicit remote address and port.
-- **Site gateways** add the remote LANs to the server-side peer while exporting the configured local LANs to that gateway. Both sides still need a valid return route or separately configured NAT.
+- **服务端 Endpoint 地址**代表 S-UI Next 自身，通常使用 `10.66.66.1/32`、`fd66:66:66::1/128` 这样的主机路由。
+- **虚拟网段**是地址分配范围，例如 `10.66.66.0/24`、`fd66:66:66::/64`，不能直接写入 Endpoint 的 `address` 字段。
+- **服务端 Peer AllowedIPs**用于地址归属，通常应为每个 Peer 独占的 `/32` 和 `/128`。
+- **客户端 AllowedIPs**决定哪些目标流量进入隧道。新 Peer 默认仅包含 WireGuard 虚拟网段；只有选择全局隧道时才会导出 `0.0.0.0/0` 和 `::/0`。
+- **客户端连接地址和端口**必须指向真正接收 WireGuard UDP 的公网入口。除非面板域名也接收这部分 UDP 流量，否则不要直接复用。
+- **普通客户端**不固定运行时远端地址，适合手机、电脑和 NAT 后设备；**固定远端节点**使用明确的远端地址和端口。
+- **站点网关**会把远端 LAN 加入服务端 Peer，并把配置的本地 LAN 导出给该网关。两侧仍需要正确的返回路由，或者另行配置 NAT。
 
-## Environment Variables
+## 环境变量
 
-| Variable | Values | Default |
+| 变量 | 可用值 | 默认值 |
 | --- | --- | --- |
-| `SUI_LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
-| `SUI_DEBUG` | boolean | `false` |
-| `SUI_BIN_FOLDER` | directory | `bin` |
-| `SUI_DB_FOLDER` | directory | `db` |
-| `SINGBOX_API` | sing-box API address | unset |
+| `SUI_LOG_LEVEL` | `debug`、`info`、`warn`、`error` | `info` |
+| `SUI_DEBUG` | 布尔值 | `false` |
+| `SUI_BIN_FOLDER` | 目录 | `bin` |
+| `SUI_DB_FOLDER` | 目录 | `db` |
+| `SINGBOX_API` | sing-box API 地址 | 未设置 |
 
-## Development
+## 开发
 
 ```sh
 git clone --recurse-submodules https://github.com/ciallothu/s-ui-next.git
 cd s-ui-next
 ```
 
-- Backend: Go `1.26.5`; the exact version is declared in `go.mod`.
-- Frontend: Vue and TypeScript in the [`frontend`](https://github.com/ciallothu/s-ui-next-frontend) submodule. Use `npm ci`, then `npm run build`.
-- Mobile: Flutter source lives in `mobile/`.
-- Full development and contribution instructions are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- 后端使用 Go，准确版本见 `go.mod`。
+- Web 前端使用 Vue 和 TypeScript，位于 [`frontend`](https://github.com/ciallothu/s-ui-next-frontend) 子模块。
+- Flutter 移动端源码位于 `mobile/`。
+- 完整开发与贡献说明见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
-## Credits and License
+## 来源与许可证
 
-S-UI Next builds on [alireza0/s-ui](https://github.com/alireza0/s-ui) and [SagerNet/sing-box](https://github.com/SagerNet/sing-box). The Web frontend is maintained in [ciallothu/s-ui-next-frontend](https://github.com/ciallothu/s-ui-next-frontend).
+S-UI Next 基于 [alireza0/s-ui](https://github.com/alireza0/s-ui) 和 [SagerNet/sing-box](https://github.com/SagerNet/sing-box) 开发。Web 前端由 [ciallothu/s-ui-next-frontend](https://github.com/ciallothu/s-ui-next-frontend) 单独维护。
 
-This project is distributed under the [GNU General Public License v3.0](LICENSE).
+本项目使用 [GNU General Public License v3.0](LICENSE) 发布。
