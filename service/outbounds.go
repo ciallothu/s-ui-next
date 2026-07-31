@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"os"
+	"strings"
 
 	"github.com/ciallothu/s-ui-next/database"
 	"github.com/ciallothu/s-ui-next/database/model"
@@ -66,6 +67,10 @@ func (s *OutboundService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 		var outbound model.Outbound
 		err = outbound.UnmarshalJSON(data)
 		if err != nil {
+			return err
+		}
+		outbound.Tag = strings.TrimSpace(outbound.Tag)
+		if err = ensureEgressTagAvailable(tx, "outbound", outbound.Id, outbound.Tag); err != nil {
 			return err
 		}
 

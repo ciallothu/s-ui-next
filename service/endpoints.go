@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/ciallothu/s-ui-next/database"
 	"github.com/ciallothu/s-ui-next/database/model"
@@ -46,6 +47,8 @@ func (o *EndpointService) GetAll() (*[]map[string]interface{}, error) {
 		}
 		if endpoint.Type == "wireguard" {
 			redactWireGuardSecrets(epData)
+		} else if endpoint.Type == "warp" {
+			redactWarpSecrets(epData)
 		}
 		data = append(data, epData)
 	}
@@ -88,6 +91,10 @@ func (s *EndpointService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 			if err != nil {
 				return err
 			}
+			data, err = mergeWarpSecrets(data, oldEndpoint)
+			if err != nil {
+				return err
+			}
 		}
 		data, err = normalizeAndValidateWireGuard(data)
 		if err != nil {
@@ -98,6 +105,10 @@ func (s *EndpointService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 		if err != nil {
 			return err
 		}
+		endpoint.Tag = strings.TrimSpace(endpoint.Tag)
+		if err = ensureEgressTagAvailable(tx, "endpoint", endpoint.Id, endpoint.Tag); err != nil {
+			return err
+		}
 
 		if endpoint.Type == "warp" {
 			if act == "new" {
@@ -106,12 +117,7 @@ func (s *EndpointService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 					return err
 				}
 			} else {
-				var old_license string
-				err = tx.Model(model.Endpoint{}).Select("json_extract(ext, '$.license_key')").Where("id = ?", endpoint.Id).Find(&old_license).Error
-				if err != nil {
-					return err
-				}
-				err = s.WarpService.SetWarpLicense(old_license, &endpoint)
+				err = s.WarpService.SetWarpLicense(warpLicense(oldEndpoint), &endpoint)
 				if err != nil {
 					return err
 				}

@@ -214,7 +214,7 @@ func (a *APIv3Handler) logout(c *gin.Context) {
 func (a *APIv3Handler) meta(c *gin.Context) {
 	v3OK(c, gin.H{
 		"apiVersion": "3", "panelVersion": config.GetVersion(), "panelName": config.GetName(),
-		"features": []string{"resources", "usage-filter", "stats-filter", "structured-logs", "audit", "backup", "totp", "oidc", "passkey", "wireguard-export", "transactional-apply"},
+		"features": []string{"resources", "usage-filter", "stats-filter", "structured-logs", "audit", "backup", "totp", "oidc", "passkey", "wireguard-export", "wireguard-relay", "warp-egress", "transactional-apply"},
 	})
 }
 

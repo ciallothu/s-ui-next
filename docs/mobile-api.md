@@ -27,6 +27,7 @@ API 根路径跟随面板 Web Path。例如面板为 `https://example.com/app/`�
 - `GET resources/{inbounds|clients|outbounds|endpoints|services|tls|config|settings}`。
 - `POST resources/{resource}`：`action` 支持 `new`、`edit`、`del`、`set`、`addbulk`、`editbulk`、`delbulk`，`data` 为原生 JSON 值。Endpoint 资源可额外发送 `apply: false` 仅保存；省略或设为 `true` 时会在完整配置校验后同步应用，失败则恢复原运行配置。
 - `POST wireguard/export`：发送 `tag` 与从 0 开始的 `peerIndex`，返回受控生成的标准 WireGuard 客户端配置、名称和文件名。导出使用显式配置的 WireGuard UDP 地址，不使用管理面板域名。
+- `features` 中的 `wireguard-relay` 表示服务端支持分离监听、对端连接与运行时路由；`warp-egress` 表示可以通过 Endpoint 资源直接创建 Cloudflare WARP 出口。
 - `GET status`、`GET onlines`。
 - `GET users`、`PATCH users/:id`。
 - `GET/POST tokens`、`DELETE tokens/:id`。

@@ -206,6 +206,8 @@ class _ResourcePageState extends State<ResourcePage> {
     ];
     final values = <_QrValue>[];
     for (var index = 0; index < peers.length; index++) {
+      final peer = peers[index];
+      if (peer is! Map || !_isExportableWireGuardPeer(item, peer)) continue;
       final result = Map<String, dynamic>.from(
         await api.post('wireguard/export', data: {'tag': item['tag'], 'peerIndex': index}) as Map,
       );
@@ -213,6 +215,22 @@ class _ResourcePageState extends State<ResourcePage> {
     }
     if (!mounted) return;
     await _showQrValues('${item['tag']} · WireGuard', values);
+  }
+
+  bool _hasExportableWireGuardPeer(Map<String, dynamic> item) {
+    final exportEnabled = item.containsKey('client_export_enabled')
+        ? boolValue(item['client_export_enabled'])
+        : (item['advertised_endpoint_host']?.toString().isNotEmpty ?? false);
+    if (!exportEnabled) return false;
+    final peers = item['peers'];
+    return peers is List && peers.any((peer) => peer is Map && _isExportableWireGuardPeer(item, peer));
+  }
+
+  bool _isExportableWireGuardPeer(Map<String, dynamic> item, Map<dynamic, dynamic> peer) {
+    if (peer['peer_key_mode'] == 'existing_peer') return false;
+    if ((peer['client_private_key']?.toString().isNotEmpty ?? false) || boolValue(peer['client_private_key_set'])) return true;
+    final keys = item['ext'] is Map ? (item['ext'] as Map)['keys'] : null;
+    return keys is List && keys.any((key) => key is Map && key['public_key'] == peer['public_key']);
   }
 
   Future<void> _showQrValues(String title, List<_QrValue> values) async {
@@ -341,7 +359,7 @@ class _ResourcePageState extends State<ResourcePage> {
             PopupMenuItem(value: 'clone', child: ListTile(leading: const Icon(Icons.copy_all_outlined), title: Text(context.t('resource.clone')))),
             if (widget.resource == 'outbounds') PopupMenuItem(value: 'test', child: ListTile(leading: const Icon(Icons.speed_outlined), title: Text(context.t('resource.connectionTest')))),
             if (widget.resource == 'clients') PopupMenuItem(value: 'qr-client', child: ListTile(leading: const Icon(Icons.qr_code), title: Text(context.t('resource.subscriptionQr')))),
-            if (widget.resource == 'endpoints' && item['type'] == 'wireguard') PopupMenuItem(value: 'qr-wireguard', child: ListTile(leading: const Icon(Icons.qr_code), title: Text(context.t('resource.wireguardQr')))),
+            if (widget.resource == 'endpoints' && item['type'] == 'wireguard' && _hasExportableWireGuardPeer(item)) PopupMenuItem(value: 'qr-wireguard', child: ListTile(leading: const Icon(Icons.qr_code), title: Text(context.t('resource.wireguardQr')))),
             PopupMenuItem(value: 'copy', child: ListTile(leading: const Icon(Icons.content_copy), title: Text(context.t('resource.copyJson')))),
             PopupMenuItem(value: 'delete', child: ListTile(leading: const Icon(Icons.delete_outline), title: Text(context.t('common.delete')))),
           ],
