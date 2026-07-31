@@ -77,18 +77,21 @@ See [`docs/mobile-api.md`](docs/mobile-api.md) for routes, parameters, and respo
 - Link, JSON, and Clash subscriptions continue to support external links and subscriptions while applying stricter URL, domain, size, and data validation.
 - Disabled subscription information no longer leaks a partial `Subscription-Userinfo` header, and incomplete metadata is handled without panics.
 
-### WireGuard endpoint management
+### Tunnels and egress
 
 WireGuard endpoints use a dedicated editor and backend service rather than treating every field as interchangeable sing-box JSON.
 
-- Separate server endpoint addresses, virtual allocation networks, peer address ownership, client routes, and the public UDP endpoint exported to clients.
+- Keep local addresses and listening, remote connection mode, runtime AllowedIPs, allocation networks, and client profile export separate.
 - Generate private keys and PSKs with secure randomness. Secret values are redacted in normal resource responses and preserved when a redacted form is saved.
 - Export a controlled client configuration or QR code only through an explicit action.
-- Choose safe route presets for WireGuard virtual networks, a single peer, custom networks, or an explicit full tunnel.
-- Support roaming clients, fixed remote nodes, and site gateways with separate local and remote site CIDRs.
+- Generate panel-managed clients or add the public key of an existing VPS or device without storing its private key.
+- Support dynamic listeners, fixed remote peers, two-VPS relays, full-tunnel egress, and site gateways with routed local and remote networks.
+- Keep runtime peer routes independent from exported client routes. Default routes always require an explicit full-tunnel choice.
 - Optionally route traffic between peers through the S-UI Next server using a managed rule table. Equivalent user-authored rules are not duplicated or removed.
 - Validate IPv4/IPv6 host addresses, prefixes, peer ownership, routes, public endpoint host/port, and conflicting configuration before saving.
 - **Save** stores a validated configuration without changing the running core. **Save & apply** validates the complete generated configuration, restarts sing-box synchronously, checks its state, and restores the previous runtime if applying the change fails.
+
+Cloudflare WARP can be created directly as an S-UI Next egress without installing a local WARP client or bridging through SOCKS. Creating one requires acceptance of Cloudflare's terms; device tokens, licenses, and tunnel private keys are not returned in plaintext after they are saved.
 
 ### Security and data safety
 
@@ -106,7 +109,7 @@ WireGuard endpoints use a dedicated editor and backend service rather than treat
 | General | Mixed, SOCKS, HTTP, HTTPS, Direct, Redirect, TProxy |
 | Proxy | VLESS, VMess, Trojan, Shadowsocks, ShadowTLS |
 | Modern transports | Hysteria, Hysteria2, TUIC, Naive |
-| Endpoints | WireGuard, Tailscale, WARP |
+| Tunnels and egress | WireGuard, Tailscale, Cloudflare WARP |
 | Routing and security | XTLS, Reality, uTLS, ACME, gVisor, PROXY Protocol, transparent proxying |
 
 Support ultimately follows the embedded sing-box version and the build tags used by each release target.
@@ -206,12 +209,12 @@ For unusual proxy layouts, set the RP ID to a domain such as `panel.example.com`
 
 ## WireGuard Configuration Notes
 
-- **Server endpoint addresses** identify S-UI Next itself and are normally host routes such as `10.66.66.1/32` and `fd66:66:66::1/128`.
-- **Virtual network prefixes** are allocation ranges such as `10.66.66.0/24` and `fd66:66:66::/64`; they are not written into the endpoint `address` field.
-- **Server peer AllowedIPs** assign source ownership and should normally be unique `/32` and `/128` routes.
+- **Local endpoint addresses** identify this S-UI Next instance and are normally host routes such as `10.66.66.1/32` and `fd66:66:66::1/128`.
+- **Virtual network prefixes** are only allocation ranges for managed clients. They may be omitted for an existing VPS peer, but the local WireGuard address is still required.
+- **Runtime AllowedIPs** select the addresses or destination networks carried by a peer. A relay initiator can explicitly route all traffic to a fixed peer, while a receiver can listen and learn the peer endpoint dynamically.
 - **Client AllowedIPs** choose destination traffic sent through the tunnel. New peers default to the WireGuard virtual networks; `0.0.0.0/0` and `::/0` are emitted only by the full-tunnel preset.
-- **Client endpoint host and port** must point to the public UDP listener. Do not reuse the Web panel hostname unless it also accepts WireGuard UDP traffic.
-- **Regular clients** leave the runtime peer endpoint dynamic, which suits phones, laptops, and devices behind NAT. **Fixed remote nodes** use an explicit remote address and port.
+- **Client profile export** is optional. When enabled, its host and port must point to the real public UDP listener.
+- **Dynamic peers** suit NATed devices or a receiving relay VPS. **Fixed peers** are contacted by this server at an explicit address and port.
 - **Site gateways** add the remote LANs to the server-side peer while exporting the configured local LANs to that gateway. Both sides still need a valid return route or separately configured NAT.
 
 ## Environment Variables

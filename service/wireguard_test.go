@@ -31,7 +31,7 @@ func testWireGuardData(t *testing.T) map[string]interface{} {
 		"id":                          0,
 		"type":                        "wireguard",
 		"tag":                         "wireguard-test",
-		"wireguard_schema":            3,
+		"wireguard_schema":            4,
 		"address":                     []string{"10.66.66.1/32", "fd66:66:66::1/128"},
 		"tunnel_ipv4_cidr":            "10.66.66.0/24",
 		"tunnel_ipv6_cidr":            "fd66:66:66::/64",
@@ -39,6 +39,7 @@ func testWireGuardData(t *testing.T) map[string]interface{} {
 		"listen_port":                 20522,
 		"advertised_endpoint_host":    "vpn.example.com",
 		"advertised_endpoint_port":    20522,
+		"client_export_enabled":       true,
 		"peer_to_peer_enabled":        true,
 		"hub_peer_forwarding_enabled": true,
 		"default_client_allowed_ips":  []string{"10.66.66.0/24", "fd66:66:66::/64"},
@@ -49,12 +50,15 @@ func testWireGuardData(t *testing.T) map[string]interface{} {
 			"name":                 "Laptop",
 			"peer_mode":            "roaming_client",
 			"peer_role":            "client",
+			"peer_key_mode":        "generated_client",
 			"remote_endpoint_mode": "dynamic",
 			"public_key":           clientKey.PublicKey().String(),
 			"client_private_key":   clientKey.String(),
 			"pre_shared_key":       psk,
 			"assigned_ipv4":        "10.66.66.2/32",
 			"assigned_ipv6":        "fd66:66:66::2/128",
+			"runtime_route_preset": "peer_addresses",
+			"runtime_allowed_ips":  []string{"10.66.66.2/32", "fd66:66:66::2/128"},
 			"client_route_preset":  "virtual_network",
 			"client_allowed_ips":   []string{"10.66.66.0/24", "fd66:66:66::/64"},
 			"include_ipv4":         true,
@@ -172,7 +176,7 @@ func TestWireGuardRuntimeJSONStripsEditorMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(runtimeJSON)
-	for _, forbidden := range []string{"client_allowed_ips", "client_private_key", "advertised_endpoint_host", "peer_to_peer_enabled"} {
+	for _, forbidden := range []string{"client_allowed_ips", "client_private_key", "runtime_allowed_ips", "advertised_endpoint_host", "peer_to_peer_enabled"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("runtime JSON leaked editor metadata %q: %s", forbidden, text)
 		}
@@ -188,6 +192,7 @@ func TestWireGuardRuntimeJSONStripsDynamicSiteGatewayEndpoint(t *testing.T) {
 	peer["peer_role"] = "site_gateway"
 	peer["peer_mode"] = "site_to_site"
 	peer["remote_endpoint_mode"] = "dynamic"
+	peer["runtime_route_preset"] = "remote_networks"
 	peer["remote_site_cidrs"] = []string{"192.168.50.0/24"}
 	peer["static_remote_address"] = "198.51.100.10"
 	peer["static_remote_port"] = 51820
@@ -219,6 +224,104 @@ func TestWireGuardRuntimeJSONStripsDynamicSiteGatewayEndpoint(t *testing.T) {
 	}
 	if _, exists := runtimePeer["remote_site_cidrs"]; exists {
 		t.Fatalf("runtime JSON leaked site-gateway metadata: %s", runtimeJSON)
+	}
+}
+
+func TestWireGuardRelayAllowsIndependentInitiatorAndReceiverSettings(t *testing.T) {
+	receiver := testWireGuardData(t)
+	receiver["wireguard_schema"] = 4
+	receiver["address"] = []string{"10.77.0.2/32"}
+	receiver["listen_port"] = 51820
+	receiver["client_export_enabled"] = false
+	delete(receiver, "tunnel_ipv4_cidr")
+	delete(receiver, "tunnel_ipv6_cidr")
+	delete(receiver, "advertised_endpoint_host")
+	delete(receiver, "advertised_endpoint_port")
+	receiverPeer := mapValue(listValue(receiver["peers"])[0])
+	receiverPeer["peer_mode"] = "static_peer"
+	receiverPeer["peer_role"] = "fixed_node"
+	receiverPeer["peer_key_mode"] = "existing_peer"
+	receiverPeer["remote_endpoint_mode"] = "dynamic"
+	receiverPeer["runtime_route_preset"] = "custom"
+	receiverPeer["runtime_allowed_ips"] = []string{"10.77.0.1/32"}
+	delete(receiverPeer, "client_private_key")
+	delete(receiverPeer, "assigned_ipv4")
+	delete(receiverPeer, "assigned_ipv6")
+	delete(receiverPeer, "server_allowed_ips")
+	delete(receiverPeer, "allowed_ips")
+
+	raw, _ := json.Marshal(receiver)
+	normalized, err := normalizeAndValidateWireGuard(raw)
+	if err != nil {
+		t.Fatalf("receiver configuration should allow a dynamic peer without client export fields: %v", err)
+	}
+	var receiverEndpoint model.Endpoint
+	if err = receiverEndpoint.UnmarshalJSON(normalized); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := receiverEndpoint.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receiverRuntime map[string]interface{}
+	if err = json.Unmarshal(runtime, &receiverRuntime); err != nil {
+		t.Fatal(err)
+	}
+	runtimePeer := mapValue(listValue(receiverRuntime["peers"])[0])
+	if _, exists := runtimePeer["address"]; exists {
+		t.Fatalf("receiver peer must learn its remote endpoint dynamically: %s", runtime)
+	}
+	if got := strings.Join(stringsValue(runtimePeer["allowed_ips"]), ","); got != "10.77.0.1/32" {
+		t.Fatalf("unexpected receiver runtime AllowedIPs: %s", got)
+	}
+
+	initiator := testWireGuardData(t)
+	initiator["wireguard_schema"] = 4
+	initiator["address"] = []string{"10.77.0.1/32"}
+	initiator["listen_port"] = 0
+	initiator["client_export_enabled"] = false
+	delete(initiator, "tunnel_ipv4_cidr")
+	delete(initiator, "tunnel_ipv6_cidr")
+	delete(initiator, "advertised_endpoint_host")
+	delete(initiator, "advertised_endpoint_port")
+	initiatorPeer := mapValue(listValue(initiator["peers"])[0])
+	initiatorPeer["peer_mode"] = "static_peer"
+	initiatorPeer["peer_role"] = "fixed_node"
+	initiatorPeer["peer_key_mode"] = "existing_peer"
+	initiatorPeer["remote_endpoint_mode"] = "static"
+	initiatorPeer["static_remote_address"] = "relay.example.com"
+	initiatorPeer["static_remote_port"] = 51820
+	initiatorPeer["runtime_route_preset"] = "full_tunnel"
+	initiatorPeer["runtime_allowed_ips"] = []string{"0.0.0.0/0", "::/0"}
+	delete(initiatorPeer, "client_private_key")
+	delete(initiatorPeer, "assigned_ipv4")
+	delete(initiatorPeer, "assigned_ipv6")
+	delete(initiatorPeer, "server_allowed_ips")
+	delete(initiatorPeer, "allowed_ips")
+
+	raw, _ = json.Marshal(initiator)
+	normalized, err = normalizeAndValidateWireGuard(raw)
+	if err != nil {
+		t.Fatalf("initiator configuration should allow a static full-tunnel peer without listening: %v", err)
+	}
+	var initiatorEndpoint model.Endpoint
+	if err = initiatorEndpoint.UnmarshalJSON(normalized); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err = initiatorEndpoint.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var initiatorRuntime map[string]interface{}
+	if err = json.Unmarshal(runtime, &initiatorRuntime); err != nil {
+		t.Fatal(err)
+	}
+	runtimePeer = mapValue(listValue(initiatorRuntime["peers"])[0])
+	if runtimePeer["address"] != "relay.example.com" || intValue(runtimePeer["port"]) != 51820 {
+		t.Fatalf("initiator static endpoint was not preserved: %s", runtime)
+	}
+	if got := strings.Join(stringsValue(runtimePeer["allowed_ips"]), ","); got != "0.0.0.0/0,::/0" {
+		t.Fatalf("unexpected initiator runtime AllowedIPs: %s", got)
 	}
 }
 
@@ -320,6 +423,7 @@ func TestWireGuardSiteGatewayRoutesRemoteSite(t *testing.T) {
 	peer["peer_role"] = "site_gateway"
 	peer["peer_mode"] = "site_to_site"
 	peer["remote_endpoint_mode"] = "dynamic"
+	peer["runtime_route_preset"] = "remote_networks"
 	peer["remote_site_cidrs"] = []string{"192.168.50.0/24", "fd50:50:50::/64"}
 	peer["local_site_cidrs"] = []string{"192.168.100.0/24"}
 	raw, _ := json.Marshal(data)

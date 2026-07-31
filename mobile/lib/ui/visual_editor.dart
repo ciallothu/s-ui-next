@@ -456,6 +456,7 @@ class _VisualEditorDialogState extends State<VisualEditorDialog> {
           ext['public_key'] = publicKey;
           root['ext'] = ext;
         } else {
+          parent['peer_key_mode'] = 'generated_client';
           parent['client_private_key'] = privateKey;
           parent['client_private_key_set'] = true;
           parent['public_key'] = publicKey;
@@ -705,11 +706,25 @@ class VisualEditorSchema {
   }
 
   bool expandByDefault(String path) => const ['config', 'server', 'client', 'tls', 'transport'].contains(path) || path.split('.').length <= 1;
-  bool isSensitive(String key) => key.contains('password') || key.contains('secret') || key.contains('private_key') || key == 'key';
+  bool isSensitive(String key) =>
+      key.contains('password') ||
+      key.contains('secret') ||
+      key.contains('private_key') ||
+      key.contains('token') ||
+      key.contains('license') ||
+      key == 'auth_key' ||
+      key == 'key';
   bool isMultiline(String path, String key) => key == 'certificate' || key == 'key' || key == 'private_key' || key.endsWith('Ext') || key == 'content';
   bool isStringBoolean(String path, String key, dynamic value) => resource == 'settings' && const {'subEncode', 'subShowInfo'}.contains(key);
   bool isStringNumber(String path, String key, dynamic value) => resource == 'settings' && const {'webPort', 'subPort', 'sessionMaxAge', 'trafficAge', 'subUpdates'}.contains(key);
-  bool isHiddenField(String key) => const {'private_key_set', 'client_private_key_set', 'pre_shared_key_set', 'pre_shared_key_clear'}.contains(key);
+  bool isHiddenField(String key) => const {
+    'private_key_set',
+    'client_private_key_set',
+    'pre_shared_key_set',
+    'pre_shared_key_clear',
+    'access_token_set',
+    'license_key_set',
+  }.contains(key);
   bool isRedactedSecret(String value) => value == '[redacted]' || value.contains('•');
   bool isWireGuardKeyField(String path, String key, Map<dynamic, dynamic> parent, dynamic root) {
     if (resource != 'endpoints' || root is! Map) return false;
@@ -730,7 +745,9 @@ class VisualEditorSchema {
     if (key == 'mode') return const ['and', 'or', 'rule', 'global', 'direct'];
     if (key == 'peer_mode') return const ['roaming_client', 'static_peer', 'site_to_site'];
     if (key == 'peer_role') return const ['client', 'fixed_node', 'site_gateway'];
+    if (key == 'peer_key_mode') return const ['generated_client', 'existing_peer'];
     if (key == 'remote_endpoint_mode') return const ['dynamic', 'static'];
+    if (key == 'runtime_route_preset') return const ['peer_addresses', 'remote_networks', 'custom', 'full_tunnel'];
     if (key == 'client_route_preset') return const ['virtual_network', 'single_peer', 'custom', 'full_tunnel'];
     if (key == 'network') return const ['tcp', 'udp'];
     if (key == 'strategy') return const ['', 'prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only'];
@@ -803,9 +820,9 @@ class VisualEditorSchema {
           };
         }
         return {
-          'name': '', 'peer_role': 'client', 'peer_mode': 'roaming_client', 'remote_endpoint_mode': 'dynamic',
+          'name': '', 'peer_role': 'fixed_node', 'peer_mode': 'static_peer', 'peer_key_mode': 'existing_peer', 'remote_endpoint_mode': 'dynamic',
           'public_key': '', 'client_private_key': '', 'pre_shared_key': '',
-          'assigned_ipv4': '', 'assigned_ipv6': '', 'server_allowed_ips': <String>[], 'allowed_ips': <String>[],
+          'assigned_ipv4': '', 'assigned_ipv6': '', 'runtime_route_preset': 'custom', 'runtime_allowed_ips': <String>[], 'server_allowed_ips': <String>[], 'allowed_ips': <String>[],
           'remote_site_cidrs': <String>[], 'local_site_cidrs': <String>[], 'route_inbounds': <String>[],
           'client_route_preset': 'virtual_network', 'client_allowed_ips': <String>[], 'client_dns': <String>[],
           'client_mtu': 1420, 'client_keepalive': 25, 'include_ipv4': true, 'include_ipv6': true,
@@ -831,10 +848,10 @@ class VisualEditorSchema {
     if (path.contains('dns')) return ['servers', 'rules', 'final', 'strategy', 'disable_cache', 'independent_cache', 'cache_capacity', 'reverse_mapping'];
     if (path.endsWith('peers') || path.contains('peers[')) {
       if (root is Map && root['type'] == 'warp') return ['address', 'port', 'public_key', 'pre_shared_key', 'reserved', 'allowed_ips'];
-      return ['name', 'peer_role', 'remote_endpoint_mode', 'public_key', 'client_private_key', 'pre_shared_key', 'assigned_ipv4', 'assigned_ipv6', 'remote_site_cidrs', 'local_site_cidrs', 'route_inbounds', 'client_allowed_ips', 'client_dns'];
+      return ['name', 'peer_role', 'peer_key_mode', 'remote_endpoint_mode', 'public_key', 'client_private_key', 'pre_shared_key', 'assigned_ipv4', 'assigned_ipv6', 'runtime_route_preset', 'runtime_allowed_ips', 'remote_site_cidrs', 'local_site_cidrs', 'route_inbounds', 'client_allowed_ips', 'client_dns'];
     }
     if (resource == 'endpoints' && root is Map) {
-      if (root['type'] == 'warp') return ['address', 'private_key', 'listen_port', 'mtu', 'udp_timeout', 'workers', 'system', 'name', 'peers', 'ext'];
+      if (root['type'] == 'warp') return ['warp_terms_accepted', 'address', 'private_key', 'listen_port', 'mtu', 'udp_timeout', 'workers', 'system', 'name', 'peers', 'ext'];
       if (root['type'] == 'tailscale') return ['domain_resolver', 'state_directory', 'auth_key', 'control_url', 'ephemeral', 'hostname', 'accept_routes', 'exit_node', 'advertise_routes', 'relay_server_port', 'relay_server_static_endpoints', 'system_interface', 'udp_timeout'];
     }
     if (resource == 'services' && root is Map) {
@@ -938,7 +955,7 @@ class VisualEditorSchema {
       final base = <String, dynamic>{'id': 0, 'type': type, 'tag': ''};
       final detail = <String, Map<String, dynamic>>{
         'wireguard': {
-          'wireguard_schema': 3,
+          'wireguard_schema': 4,
           'address': ['10.66.66.1/32', 'fd66:66:66::1/128'],
           'tunnel_ipv4_cidr': '10.66.66.0/24',
           'tunnel_ipv6_cidr': 'fd66:66:66::/64',
@@ -946,6 +963,7 @@ class VisualEditorSchema {
           'listen_port': 0,
           'advertised_endpoint_host': '',
           'advertised_endpoint_port': 0,
+          'client_export_enabled': true,
           'peer_to_peer_enabled': false,
           'hub_peer_forwarding_enabled': false,
           'default_client_allowed_ips': ['10.66.66.0/24', 'fd66:66:66::/64'],
@@ -955,7 +973,7 @@ class VisualEditorSchema {
           'system': false,
           'peers': <dynamic>[],
         },
-        'warp': {'address': <String>[], 'private_key': '', 'listen_port': 0, 'mtu': 1420, 'peers': <dynamic>[], 'ext': {'license_key': ''}},
+        'warp': {'warp_terms_accepted': false, 'address': <String>[], 'private_key': '', 'listen_port': 0, 'mtu': 1280, 'system': false, 'peers': <dynamic>[], 'ext': <String, dynamic>{}},
         'tailscale': {'domain_resolver': 'local', 'accept_routes': false},
       };
       return {...base, ...?detail[type]};

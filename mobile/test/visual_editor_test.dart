@@ -36,6 +36,8 @@ void main() {
     expect(endpoint['peers'], isA<List>());
     expect(endpoint['peers'], isEmpty);
     expect(endpoint['ext'], isA<Map>());
+    expect(endpoint['warp_terms_accepted'], false);
+    expect(endpoint['mtu'], 1280);
 
     schema.applyRootType(endpoint, 'tailscale');
     expect(endpoint['id'], 3);

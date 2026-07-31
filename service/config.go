@@ -21,6 +21,7 @@ import (
 var (
 	LastUpdate          atomic.Int64
 	corePtr             *core.Core
+	configSaveMu        sync.Mutex
 	startCoreMu         sync.Mutex
 	startCoreInProgress bool
 	lastStartFailTime   time.Time
@@ -203,6 +204,9 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 }
 
 func (s *ConfigService) SaveWithApply(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string, apply bool) (objs []string, err error) {
+	configSaveMu.Lock()
+	defer configSaveMu.Unlock()
+
 	if obj == "endpoints" {
 		return s.saveEndpointWithApply(act, data, loginUser, apply)
 	}

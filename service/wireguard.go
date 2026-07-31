@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const wireGuardSchemaVersion = 3
+const wireGuardSchemaVersion = 4
 const wireGuardRedactedSecret = "[redacted]"
 
 type WireGuardExport struct {
@@ -167,14 +167,10 @@ func normalizePeerRole(peer map[string]interface{}) (string, string) {
 	}
 	remoteMode := stringValue(peer["remote_endpoint_mode"])
 	if remoteMode == "" {
-		if role == "client" {
-			remoteMode = "dynamic"
-		} else if stringValue(peer["static_remote_address"]) != "" || intValue(peer["static_remote_port"]) > 0 {
+		if stringValue(peer["static_remote_address"]) != "" || intValue(peer["static_remote_port"]) > 0 {
 			remoteMode = "static"
-		} else if role == "site_gateway" {
-			remoteMode = "dynamic"
 		} else {
-			remoteMode = "static"
+			remoteMode = "dynamic"
 		}
 	}
 	peer["peer_role"] = role
@@ -217,10 +213,13 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 	if stringValue(root["tag"]) == "" {
 		return nil, common.NewError("WireGuard tag is required")
 	}
+	var localPublicKey string
 	if key := stringValue(root["private_key"]); key == "" {
 		return nil, common.NewError("WireGuard server private key is required")
-	} else if _, err := wgtypes.ParseKey(key); err != nil {
+	} else if privateKey, err := wgtypes.ParseKey(key); err != nil {
 		return nil, common.NewErrorf("invalid WireGuard server private key: %v", err)
+	} else {
+		localPublicKey = privateKey.PublicKey().String()
 	}
 
 	var tunnel4, tunnel6 netip.Prefix
@@ -237,9 +236,6 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 			return nil, err
 		}
 	}
-	if !tunnel4.IsValid() && !tunnel6.IsValid() {
-		return nil, common.NewError("at least one WireGuard virtual network prefix is required")
-	}
 
 	addresses := stringsValue(root["address"])
 	if len(addresses) == 0 {
@@ -254,10 +250,10 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 		if prefix.Bits() != prefix.Addr().BitLen() {
 			return nil, common.NewErrorf("WireGuard endpoint address %s must use /32 for IPv4 or /128 for IPv6", value)
 		}
-		if prefix.Addr().Is4() && (!tunnel4.IsValid() || !tunnel4.Contains(prefix.Addr())) {
+		if prefix.Addr().Is4() && tunnel4.IsValid() && !tunnel4.Contains(prefix.Addr()) {
 			return nil, common.NewErrorf("WireGuard endpoint address %s is outside the IPv4 virtual network", value)
 		}
-		if prefix.Addr().Is6() && (!tunnel6.IsValid() || !tunnel6.Contains(prefix.Addr())) {
+		if prefix.Addr().Is6() && tunnel6.IsValid() && !tunnel6.Contains(prefix.Addr()) {
 			return nil, common.NewErrorf("WireGuard endpoint address %s is outside the IPv6 virtual network", value)
 		}
 		if _, exists := endpointAddresses[prefix.Addr()]; exists {
@@ -265,11 +261,23 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 		}
 		endpointAddresses[prefix.Addr()] = struct{}{}
 	}
-	if stringValue(root["advertised_endpoint_host"]) == "" {
-		return nil, common.NewError("client endpoint host is required and must identify the WireGuard UDP entrypoint")
+	listenPort := intValue(root["listen_port"])
+	if listenPort < 0 || listenPort > 65535 {
+		return nil, common.NewError("WireGuard listen port must be 0 (disabled) or between 1 and 65535")
 	}
-	if intValue(root["advertised_endpoint_port"]) < 1 || intValue(root["advertised_endpoint_port"]) > 65535 {
-		return nil, common.NewError("client endpoint port must be between 1 and 65535")
+
+	clientExportEnabled := boolValue(
+		root["client_export_enabled"],
+		stringValue(root["advertised_endpoint_host"]) != "" || intValue(root["advertised_endpoint_port"]) > 0,
+	)
+	root["client_export_enabled"] = clientExportEnabled
+	if clientExportEnabled {
+		if stringValue(root["advertised_endpoint_host"]) == "" {
+			return nil, common.NewError("client endpoint host is required while client configuration export is enabled")
+		}
+		if intValue(root["advertised_endpoint_port"]) < 1 || intValue(root["advertised_endpoint_port"]) > 65535 {
+			return nil, common.NewError("client endpoint port must be between 1 and 65535 while client configuration export is enabled")
+		}
 	}
 	if _, exists := root["hub_peer_forwarding_enabled"]; !exists {
 		root["hub_peer_forwarding_enabled"] = boolValue(root["peer_to_peer_enabled"], false)
@@ -277,8 +285,17 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 	root["peer_to_peer_enabled"] = boolValue(root["hub_peer_forwarding_enabled"], boolValue(root["peer_to_peer_enabled"], false))
 
 	peers := listValue(root["peers"])
-	seenPrefixes := make([]netip.Prefix, 0, len(peers)*2)
+	if len(peers) == 0 {
+		return nil, common.NewError("at least one WireGuard peer is required")
+	}
+	seenAssignedPrefixes := make([]netip.Prefix, 0, len(peers)*2)
+	type ownedPrefix struct {
+		prefix    netip.Prefix
+		peerIndex int
+	}
+	seenRuntimePrefixes := make([]ownedPrefix, 0, len(peers)*2)
 	seenRemoteSites := make([]netip.Prefix, 0, len(peers))
+	seenPeerKeys := make(map[string]int, len(peers))
 	for index, rawPeer := range peers {
 		peer := mapValue(rawPeer)
 		if peer == nil {
@@ -291,13 +308,10 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 		if remoteMode != "dynamic" && remoteMode != "static" {
 			return nil, common.NewErrorf("WireGuard peer %d has an unsupported remote endpoint mode", index+1)
 		}
-		if role == "client" {
+		if remoteMode == "dynamic" {
 			delete(peer, "address")
 			delete(peer, "port")
-			delete(peer, "static_remote_address")
-			delete(peer, "static_remote_port")
-			peer["remote_endpoint_mode"] = "dynamic"
-		} else if role == "fixed_node" || remoteMode == "static" {
+		} else {
 			if stringValue(peer["static_remote_address"]) == "" || intValue(peer["static_remote_port"]) < 1 {
 				return nil, common.NewErrorf("WireGuard peer %d requires a static remote address and port", index+1)
 			}
@@ -309,6 +323,12 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 			return nil, common.NewErrorf("WireGuard peer %d public key is required", index+1)
 		} else if _, keyErr := wgtypes.ParseKey(key); keyErr != nil {
 			return nil, common.NewErrorf("WireGuard peer %d has an invalid public key", index+1)
+		} else if key == localPublicKey {
+			return nil, common.NewErrorf("WireGuard peer %d uses this endpoint's own public key", index+1)
+		} else if previous, exists := seenPeerKeys[key]; exists {
+			return nil, common.NewErrorf("WireGuard peer %d duplicates the public key used by peer %d", index+1, previous+1)
+		} else {
+			seenPeerKeys[key] = index
 		}
 		if key := stringValue(peer["pre_shared_key"]); key != "" && !isRedactedSecret(key) {
 			if _, keyErr := wgtypes.ParseKey(key); keyErr != nil {
@@ -316,7 +336,24 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 			}
 		}
 
-		serverAllowed := make([]string, 0, 4)
+		keyMode := stringValue(peer["peer_key_mode"])
+		if keyMode == "" {
+			if stringValue(peer["client_private_key"]) != "" || boolValue(peer["client_private_key_set"], false) || role == "client" {
+				keyMode = "generated_client"
+			} else {
+				keyMode = "existing_peer"
+			}
+		}
+		if keyMode != "generated_client" && keyMode != "existing_peer" {
+			return nil, common.NewErrorf("WireGuard peer %d has an unsupported key ownership mode", index+1)
+		}
+		peer["peer_key_mode"] = keyMode
+		if keyMode == "existing_peer" {
+			delete(peer, "client_private_key")
+			delete(peer, "client_private_key_set")
+		}
+
+		assigned := make([]string, 0, 2)
 		assignedCandidates := []string{stringValue(peer["assigned_ipv4"]), stringValue(peer["assigned_ipv6"])}
 		if assignedCandidates[0] == "" && assignedCandidates[1] == "" {
 			for _, candidate := range append(stringsValue(peer["server_allowed_ips"]), stringsValue(peer["allowed_ips"])...) {
@@ -333,14 +370,15 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 		}
 		for _, candidate := range assignedCandidates {
 			if candidate != "" {
-				serverAllowed = append(serverAllowed, candidate)
+				assigned = append(assigned, candidate)
 			}
 		}
-		if len(serverAllowed) == 0 {
+		if keyMode == "generated_client" && len(assigned) == 0 {
 			return nil, common.NewErrorf("WireGuard peer %d requires an assigned /32 or /128 tunnel address", index+1)
 		}
 		seenFamily := map[bool]bool{}
-		for _, value := range serverAllowed {
+		normalizedAssigned := make([]string, 0, len(assigned))
+		for _, value := range assigned {
 			prefix, prefixErr := parsePrefix(value, fmt.Sprintf("WireGuard peer %d server allowed IP", index+1))
 			if prefixErr != nil {
 				return nil, prefixErr
@@ -357,22 +395,23 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 			}
 			seenFamily[family] = true
 			if prefix.Addr().Is4() {
-				if !tunnel4.IsValid() || !tunnel4.Contains(prefix.Addr()) {
+				if tunnel4.IsValid() && !tunnel4.Contains(prefix.Addr()) {
 					return nil, common.NewErrorf("WireGuard peer %d IPv4 address is outside the virtual network", index+1)
 				}
 				peer["assigned_ipv4"] = prefix.String()
 			} else {
-				if !tunnel6.IsValid() || !tunnel6.Contains(prefix.Addr()) {
+				if tunnel6.IsValid() && !tunnel6.Contains(prefix.Addr()) {
 					return nil, common.NewErrorf("WireGuard peer %d IPv6 address is outside the virtual network", index+1)
 				}
 				peer["assigned_ipv6"] = prefix.String()
 			}
-			for _, existing := range seenPrefixes {
+			for _, existing := range seenAssignedPrefixes {
 				if existing.Overlaps(prefix) {
 					return nil, common.NewErrorf("WireGuard peer %d address %s overlaps another peer", index+1, value)
 				}
 			}
-			seenPrefixes = append(seenPrefixes, prefix)
+			seenAssignedPrefixes = append(seenAssignedPrefixes, prefix)
+			normalizedAssigned = append(normalizedAssigned, prefix.String())
 		}
 		remoteSites := stringsValue(peer["remote_site_cidrs"])
 		if role == "site_gateway" && len(remoteSites) == 0 {
@@ -397,7 +436,6 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 			}
 			seenRemoteSites = append(seenRemoteSites, prefix)
 			normalizedRemoteSites = append(normalizedRemoteSites, prefix.String())
-			serverAllowed = append(serverAllowed, prefix.String())
 		}
 		if len(normalizedRemoteSites) > 0 {
 			peer["remote_site_cidrs"] = interfaceStrings(normalizedRemoteSites)
@@ -424,17 +462,107 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 			delete(peer, "route_inbounds")
 			delete(peer, "local_site_cidrs")
 		}
-		peer["server_allowed_ips"] = interfaceStrings(serverAllowed)
-		peer["allowed_ips"] = interfaceStrings(serverAllowed)
-		ownAddresses := make(map[netip.Addr]struct{}, len(serverAllowed))
-		for _, value := range serverAllowed {
+
+		runtimePreset := stringValue(peer["runtime_route_preset"])
+		runtimeAllowed := stringsValue(peer["runtime_allowed_ips"])
+		legacyRuntimeAllowed := append(stringsValue(peer["server_allowed_ips"]), stringsValue(peer["allowed_ips"])...)
+		if runtimePreset == "" {
+			candidates := runtimeAllowed
+			if len(candidates) == 0 {
+				candidates = legacyRuntimeAllowed
+			}
+			runtimePreset = "custom"
+			for _, value := range candidates {
+				if prefix, prefixErr := netip.ParsePrefix(value); prefixErr == nil && prefix.Bits() == 0 {
+					runtimePreset = "full_tunnel"
+					break
+				}
+			}
+			if len(candidates) == 0 || sameStringSet(candidates, normalizedAssigned) {
+				runtimePreset = "peer_addresses"
+			} else if role == "site_gateway" && len(normalizedRemoteSites) > 0 {
+				runtimePreset = "remote_networks"
+			}
+		}
+		switch runtimePreset {
+		case "peer_addresses":
+			if role == "site_gateway" {
+				return nil, common.NewErrorf("WireGuard peer %d must include its remote site networks in runtime AllowedIPs", index+1)
+			}
+			runtimeAllowed = append([]string{}, normalizedAssigned...)
+		case "remote_networks":
+			runtimeAllowed = append(append([]string{}, normalizedAssigned...), normalizedRemoteSites...)
+		case "full_tunnel":
+			if len(runtimeAllowed) == 0 {
+				runtimeAllowed = []string{"0.0.0.0/0", "::/0"}
+			}
+		case "custom":
+			if len(runtimeAllowed) == 0 {
+				runtimeAllowed = legacyRuntimeAllowed
+			}
+		default:
+			return nil, common.NewErrorf("WireGuard peer %d has an unsupported runtime route preset", index+1)
+		}
+		if len(runtimeAllowed) == 0 {
+			return nil, common.NewErrorf("WireGuard peer %d requires at least one runtime AllowedIP", index+1)
+		}
+		normalizedRuntime := make([]string, 0, len(runtimeAllowed))
+		seenRuntimeValues := map[string]bool{}
+		for _, value := range runtimeAllowed {
+			prefix, prefixErr := parsePrefix(value, fmt.Sprintf("WireGuard peer %d runtime AllowedIP", index+1))
+			if prefixErr != nil {
+				return nil, prefixErr
+			}
+			prefix = prefix.Masked()
+			if prefix.Bits() == 0 && runtimePreset != "full_tunnel" {
+				return nil, common.NewErrorf("WireGuard peer %d must explicitly select the full-tunnel runtime preset before using %s", index+1, value)
+			}
+			for _, existing := range seenRuntimePrefixes {
+				if existing.peerIndex != index && existing.prefix.Overlaps(prefix) {
+					return nil, common.NewErrorf("WireGuard peer %d runtime AllowedIP %s overlaps peer %d", index+1, value, existing.peerIndex+1)
+				}
+			}
+			normalized := prefix.String()
+			if !seenRuntimeValues[normalized] {
+				normalizedRuntime = append(normalizedRuntime, normalized)
+				seenRuntimeValues[normalized] = true
+				seenRuntimePrefixes = append(seenRuntimePrefixes, ownedPrefix{prefix: prefix, peerIndex: index})
+			}
+		}
+		if role == "site_gateway" {
+			for _, remoteValue := range normalizedRemoteSites {
+				remotePrefix, _ := netip.ParsePrefix(remoteValue)
+				covered := false
+				for _, runtimeValue := range normalizedRuntime {
+					runtimePrefix, _ := netip.ParsePrefix(runtimeValue)
+					if runtimePrefix.Bits() <= remotePrefix.Bits() && runtimePrefix.Contains(remotePrefix.Addr()) {
+						covered = true
+						break
+					}
+				}
+				if !covered {
+					return nil, common.NewErrorf("WireGuard peer %d runtime AllowedIPs do not include remote site %s", index+1, remoteValue)
+				}
+			}
+		}
+		peer["runtime_route_preset"] = runtimePreset
+		peer["runtime_allowed_ips"] = interfaceStrings(normalizedRuntime)
+		peer["server_allowed_ips"] = interfaceStrings(normalizedRuntime)
+		peer["allowed_ips"] = interfaceStrings(normalizedRuntime)
+
+		if keyMode != "generated_client" {
+			peers[index] = peer
+			continue
+		}
+		ownAddresses := make(map[netip.Addr]struct{}, len(normalizedAssigned))
+		for _, value := range normalizedAssigned {
 			if prefix, prefixErr := netip.ParsePrefix(value); prefixErr == nil {
 				ownAddresses[prefix.Addr()] = struct{}{}
 			}
 		}
 
-		include4 := boolValue(peer["include_ipv4"], tunnel4.IsValid())
-		include6 := boolValue(peer["include_ipv6"], tunnel6.IsValid())
+		include4 := boolValue(peer["include_ipv4"], stringValue(peer["assigned_ipv4"]) != "")
+		include6 := boolValue(peer["include_ipv6"], stringValue(peer["assigned_ipv6"]) != "")
 		if !include4 && !include6 {
 			return nil, common.NewErrorf("WireGuard peer %d must include IPv4, IPv6, or both", index+1)
 		}
@@ -444,6 +572,11 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 		if preset == "" {
 			preset = "virtual_network"
 			peer["client_route_preset"] = preset
+		}
+		switch preset {
+		case "virtual_network", "single_peer", "custom", "full_tunnel":
+		default:
+			return nil, common.NewErrorf("WireGuard peer %d has an unsupported client route preset", index+1)
 		}
 		clientAllowed := stringsValue(peer["client_allowed_ips"])
 		if len(clientAllowed) == 0 {
@@ -456,6 +589,9 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 			if include6 && tunnel6.IsValid() {
 				clientAllowed = append(clientAllowed, tunnel6.String())
 			}
+		}
+		if len(clientAllowed) == 0 {
+			return nil, common.NewErrorf("WireGuard peer %d requires client AllowedIPs for configuration export", index+1)
 		}
 		if role == "site_gateway" {
 			clientAllowed = append(clientAllowed, normalizedLocalSites...)
@@ -489,6 +625,24 @@ func normalizeAndValidateWireGuard(data json.RawMessage) (json.RawMessage, error
 	}
 	root["peers"] = peers
 	return json.Marshal(root)
+}
+
+func sameStringSet(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	values := make(map[string]int, len(left))
+	for _, value := range left {
+		values[strings.TrimSpace(value)]++
+	}
+	for _, value := range right {
+		key := strings.TrimSpace(value)
+		if values[key] == 0 {
+			return false
+		}
+		values[key]--
+	}
+	return true
 }
 
 func mergeWireGuardSecrets(data json.RawMessage, oldEndpoint *model.Endpoint) (json.RawMessage, error) {
@@ -659,6 +813,9 @@ func (s *EndpointService) ExportWireGuardPeer(tag string, peerIndex int) (*WireG
 	if clientPrivateKey == "" {
 		return nil, common.NewError("client private key is unavailable; generate a new key for this peer")
 	}
+	if !boolValue(root["client_export_enabled"], stringValue(root["advertised_endpoint_host"]) != "") {
+		return nil, common.NewError("enable client configuration export before exporting this peer")
+	}
 	serverPublicKey := stringValue(ext["public_key"])
 	if serverPublicKey == "" {
 		privateKey, err := wgtypes.ParseKey(stringValue(root["private_key"]))
@@ -686,9 +843,9 @@ func (s *EndpointService) ExportWireGuardPeer(tag string, peerIndex int) (*WireG
 		}
 	}
 	if len(addresses) == 0 {
-		for _, value := range stringsValue(peer["allowed_ips"]) {
+		for _, value := range append(stringsValue(peer["runtime_allowed_ips"]), stringsValue(peer["allowed_ips"])...) {
 			prefix, err := netip.ParsePrefix(value)
-			if err == nil && ((prefix.Addr().Is4() && include4) || (prefix.Addr().Is6() && include6)) {
+			if err == nil && prefix.Bits() == prefix.Addr().BitLen() && ((prefix.Addr().Is4() && include4) || (prefix.Addr().Is6() && include6)) {
 				addresses = append(addresses, prefix.String())
 			}
 		}

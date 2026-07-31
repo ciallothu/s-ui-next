@@ -2,14 +2,17 @@ package service
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ciallothu/s-ui-next/database/model"
@@ -20,224 +23,341 @@ import (
 
 type WarpService struct{}
 
-const maxWarpResponseBytes int64 = 1 << 20
+const (
+	maxWarpResponseBytes int64 = 1 << 20
+	warpAPIVersion             = "v0a1922"
+	warpClientVersion          = "a-6.3-1922"
+	warpTermsURL               = "https://www.cloudflare.com/application/terms/"
+)
 
-var warpHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var (
+	warpAPIBaseURL = "https://api.cloudflareclient.com"
+	warpHTTPClient = newWarpHTTPClient()
+)
 
-func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, error) {
-	url := fmt.Sprintf("https://api.cloudflareclient.com/v0a2158/reg/%s", deviceId)
+func newWarpHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				MaxVersion: tls.VersionTLS12,
+			},
+			ForceAttemptHTTP2:     false,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: time.Second,
+		},
+	}
+}
 
-	req, err := http.NewRequest("GET", url, nil)
+func warpAPIURL(path string) string {
+	return strings.TrimRight(warpAPIBaseURL, "/") + "/" + warpAPIVersion + "/" + strings.TrimLeft(path, "/")
+}
+
+func newWarpRequest(method string, path string, accessToken string, body []byte) (*http.Request, error) {
+	req, err := http.NewRequest(method, warpAPIURL(path), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", "okhttp/3.12.1")
+	req.Header.Set("CF-Client-Version", warpClientVersion)
+	req.Header.Set("Content-Type", "application/json")
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	return req, nil
+}
 
+func (s *WarpService) getWarpInfo(deviceID string, accessToken string) ([]byte, error) {
+	req, err := newWarpRequest(http.MethodGet, "reg/"+url.PathEscape(deviceID), accessToken, nil)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := warpHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, common.NewErrorf("warp API returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
+		return nil, common.NewErrorf("WARP API returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
 	}
 	return readWarpBody(resp)
 }
 
-func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
-	tos := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	privateKey, _ := wgtypes.GenerateKey()
-	publicKey := privateKey.PublicKey().String()
-	hostName, _ := os.Hostname()
+func (s *WarpService) RegisterWarp(endpoint *model.Endpoint) error {
+	var requested map[string]interface{}
+	if err := json.Unmarshal(endpoint.Options, &requested); err != nil {
+		return err
+	}
+	if !boolValue(requested["warp_terms_accepted"], false) {
+		return common.NewErrorf("Cloudflare terms must be accepted before creating a WARP tunnel: %s", warpTermsURL)
+	}
 
-	data := fmt.Sprintf(`{"key":"%s","tos":"%s","type": "PC","model": "s-ui-next", "name": "%s"}`, publicKey, tos, hostName)
-	url := "https://api.cloudflareclient.com/v0a2158/reg"
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(data)))
+	privateKey, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		return common.NewErrorf("failed to generate WARP private key: %v", err)
+	}
+	hostName, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostName) == "" {
+		hostName = "s-ui-next"
+	}
+	payload := struct {
+		FCMToken string `json:"fcm_token"`
+		Install  string `json:"install_id"`
+		Key      string `json:"key"`
+		Locale   string `json:"locale"`
+		Model    string `json:"model"`
+		Terms    string `json:"tos"`
+		Type     string `json:"type"`
+	}{
+		Key:    privateKey.PublicKey().String(),
+		Locale: "en_US",
+		Model:  "s-ui-next-" + hostName,
+		Terms:  time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		Type:   "Android",
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-
-	req.Header.Add("CF-Client-Version", "a-7.21-0721")
-	req.Header.Add("Content-Type", "application/json")
-
+	req, err := newWarpRequest(http.MethodPost, "reg", "", body)
+	if err != nil {
+		return err
+	}
 	resp, err := warpHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return common.NewErrorf("warp registration returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
+		return common.NewErrorf("WARP registration returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
 	}
 	responseBody, err := readWarpBody(resp)
 	if err != nil {
 		return err
 	}
 
-	var rspData map[string]interface{}
-	err = json.Unmarshal(responseBody, &rspData)
+	var registration struct {
+		DeviceID string `json:"id"`
+		Token    string `json:"token"`
+		Account  struct {
+			License string `json:"license"`
+		} `json:"account"`
+	}
+	if err = json.Unmarshal(responseBody, &registration); err != nil {
+		return err
+	}
+	if registration.DeviceID == "" || registration.Token == "" || registration.Account.License == "" {
+		return common.NewError("WARP registration response is missing device credentials")
+	}
+
+	warpInfo, err := s.getWarpInfo(registration.DeviceID, registration.Token)
 	if err != nil {
 		return err
 	}
-
-	deviceId, _ := rspData["id"].(string)
-	token, _ := rspData["token"].(string)
-	account, _ := rspData["account"].(map[string]interface{})
-	license, _ := account["license"].(string)
-	if deviceId == "" || token == "" || license == "" {
-		return common.NewError("warp registration response is missing device credentials")
+	var details struct {
+		Config struct {
+			ClientID string `json:"client_id"`
+			Interface struct {
+				Addresses struct {
+					IPv4 string `json:"v4"`
+					IPv6 string `json:"v6"`
+				} `json:"addresses"`
+			} `json:"interface"`
+			Peers []struct {
+				Endpoint struct {
+					Host string `json:"host"`
+				} `json:"endpoint"`
+				PublicKey string `json:"public_key"`
+			} `json:"peers"`
+		} `json:"config"`
 	}
-
-	warpInfo, err := s.getWarpInfo(deviceId, token)
+	if err = json.Unmarshal(warpInfo, &details); err != nil {
+		return err
+	}
+	if len(details.Config.Peers) == 0 {
+		return common.NewError("WARP device response is missing peers")
+	}
+	reserved, err := decodeWarpReserved(details.Config.ClientID)
 	if err != nil {
 		return err
 	}
-
-	var warpDetails map[string]interface{}
-	err = json.Unmarshal(warpInfo, &warpDetails)
+	ipv4, err := parseWarpAddress(details.Config.Interface.Addresses.IPv4, false)
 	if err != nil {
 		return err
 	}
-
-	warpConfig, _ := warpDetails["config"].(map[string]interface{})
-	if warpConfig == nil {
-		return common.NewError("warp device response is missing config")
-	}
-	clientId, _ := warpConfig["client_id"].(string)
-	reserved := s.getReserved(clientId)
-	interfaceConfig, _ := warpConfig["interface"].(map[string]interface{})
-	addresses, _ := interfaceConfig["addresses"].(map[string]interface{})
-	v4, _ := addresses["v4"].(string)
-	v6, _ := addresses["v6"].(string)
-	peersRaw, _ := warpConfig["peers"].([]interface{})
-	if len(peersRaw) == 0 {
-		return common.NewError("warp device response is missing peers")
-	}
-	peer, _ := peersRaw[0].(map[string]interface{})
-	endpoint, _ := peer["endpoint"].(map[string]interface{})
-	peerEndpoint, _ := endpoint["host"].(string)
-	peerEpAddress, peerEpPort, err := net.SplitHostPort(peerEndpoint)
+	ipv6, err := parseWarpAddress(details.Config.Interface.Addresses.IPv6, true)
 	if err != nil {
 		return err
 	}
-	peerPublicKey, _ := peer["public_key"].(string)
-	peerPort, _ := strconv.Atoi(peerEpPort)
-	if v4 == "" || v6 == "" || peerPublicKey == "" || peerPort == 0 {
-		return common.NewError("warp device response is incomplete")
+	peerAddress, peerPortText, err := net.SplitHostPort(details.Config.Peers[0].Endpoint.Host)
+	if err != nil {
+		return common.NewErrorf("invalid WARP peer endpoint: %v", err)
+	}
+	peerPort, err := strconv.Atoi(peerPortText)
+	if err != nil || peerPort < 1 || peerPort > 65535 || strings.TrimSpace(peerAddress) == "" {
+		return common.NewError("WARP device response contains an invalid peer endpoint")
+	}
+	if _, err = wgtypes.ParseKey(details.Config.Peers[0].PublicKey); err != nil {
+		return common.NewErrorf("WARP device response contains an invalid peer public key: %v", err)
 	}
 
-	peers := []map[string]interface{}{
-		{
-			"address":     peerEpAddress,
-			"port":        peerPort,
-			"public_key":  peerPublicKey,
-			"allowed_ips": []string{"0.0.0.0/0", "::/0"},
-			"reserved":    reserved,
-		},
+	credentials := map[string]interface{}{
+		"access_token": registration.Token,
+		"device_id":    registration.DeviceID,
+		"license_key":  registration.Account.License,
 	}
-
-	warpData := map[string]interface{}{
-		"access_token": token,
-		"device_id":    deviceId,
-		"license_key":  license,
-	}
-
-	ep.Ext, err = json.MarshalIndent(warpData, "", "  ")
+	endpoint.Ext, err = json.MarshalIndent(credentials, "", "  ")
 	if err != nil {
 		return err
 	}
-
-	var epOptions map[string]interface{}
-	err = json.Unmarshal(ep.Options, &epOptions)
-	if err != nil {
-		return err
-	}
-	epOptions["private_key"] = privateKey.String()
-	epOptions["address"] = []string{fmt.Sprintf("%s/32", v4), fmt.Sprintf("%s/128", v6)}
-	epOptions["listen_port"] = 0
-	epOptions["peers"] = peers
-
-	ep.Options, err = json.MarshalIndent(epOptions, "", "  ")
+	requested["private_key"] = privateKey.String()
+	requested["address"] = []string{ipv4.String() + "/32", ipv6.String() + "/128"}
+	requested["listen_port"] = 0
+	requested["mtu"] = 1280
+	requested["system"] = false
+	requested["peers"] = []map[string]interface{}{{
+		"address":     peerAddress,
+		"port":        peerPort,
+		"public_key":  details.Config.Peers[0].PublicKey,
+		"allowed_ips": []string{"0.0.0.0/0", "::/0"},
+		"reserved":    reserved,
+	}}
+	endpoint.Options, err = json.MarshalIndent(requested, "", "  ")
 	return err
 }
 
-func (s *WarpService) getReserved(clientID string) []int {
-	var reserved []int
-	decoded, err := base64.StdEncoding.DecodeString(clientID)
-	if err != nil {
-		return nil
+func parseWarpAddress(value string, ipv6 bool) (netip.Addr, error) {
+	address, err := netip.ParseAddr(strings.TrimSpace(value))
+	if err != nil || address.Is6() != ipv6 {
+		return netip.Addr{}, common.NewErrorf("WARP device response contains an invalid IPv%d address", map[bool]int{false: 4, true: 6}[ipv6])
 	}
-
-	hexString := ""
-	for _, char := range decoded {
-		hex := fmt.Sprintf("%02x", char)
-		hexString += hex
-	}
-
-	for i := 0; i < len(hexString); i += 2 {
-		hexByte := hexString[i : i+2]
-		decValue, err := strconv.ParseInt(hexByte, 16, 32)
-		if err != nil {
-			return nil
-		}
-		reserved = append(reserved, int(decValue))
-	}
-
-	return reserved
+	return address, nil
 }
 
-func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) error {
-	var warpData map[string]string
-	err := json.Unmarshal(ep.Ext, &warpData)
-	if err != nil {
+func decodeWarpReserved(clientID string) ([]int, error) {
+	decoded, err := base64.StdEncoding.DecodeString(clientID)
+	if err != nil || len(decoded) != 3 {
+		return nil, common.NewError("WARP device response contains an invalid reserved value")
+	}
+	return []int{int(decoded[0]), int(decoded[1]), int(decoded[2])}, nil
+}
+
+func (s *WarpService) SetWarpLicense(oldLicense string, endpoint *model.Endpoint) error {
+	var warpData map[string]interface{}
+	if err := json.Unmarshal(endpoint.Ext, &warpData); err != nil {
 		return err
 	}
-	if warpData["device_id"] == "" || warpData["access_token"] == "" {
-		return common.NewError("warp device credentials are missing")
+	deviceID := stringValue(warpData["device_id"])
+	accessToken := stringValue(warpData["access_token"])
+	license := stringValue(warpData["license_key"])
+	if deviceID == "" || accessToken == "" {
+		return common.NewError("WARP device credentials are missing")
 	}
-
-	if warpData["license_key"] == old_license {
+	if license == "" {
+		return common.NewError("WARP license key must not be empty")
+	}
+	if license == oldLicense {
 		return nil
 	}
 
-	url := fmt.Sprintf("https://api.cloudflareclient.com/v0a2158/reg/%s/account", warpData["device_id"])
-	data := fmt.Sprintf(`{"license": "%s"}`, warpData["license_key"])
-
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte(data)))
+	body, err := json.Marshal(map[string]string{"license": license})
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+warpData["access_token"])
-
+	req, err := newWarpRequest(http.MethodPut, "reg/"+url.PathEscape(deviceID)+"/account", accessToken, body)
+	if err != nil {
+		return err
+	}
 	resp, err := warpHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return common.NewErrorf("warp license update returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return common.NewErrorf("WARP license update returned HTTP %d: %s", resp.StatusCode, readWarpResponse(resp))
 	}
 	responseBody, err := readWarpBody(resp)
 	if err != nil {
 		return err
 	}
+	if len(bytes.TrimSpace(responseBody)) == 0 {
+		return nil
+	}
 	var response map[string]interface{}
-	err = json.Unmarshal(responseBody, &response)
-	if err != nil {
+	if err = json.Unmarshal(responseBody, &response); err != nil {
 		return err
 	}
-
-	if success, ok := response["success"].(bool); ok && success == false {
+	if success, ok := response["success"].(bool); ok && !success {
 		errorArr, _ := response["errors"].([]interface{})
 		if len(errorArr) > 0 {
 			if errorObj, ok := errorArr[0].(map[string]interface{}); ok {
 				return common.NewError(errorObj["code"], errorObj["message"])
 			}
 		}
-		return common.NewError("warp license update failed")
+		return common.NewError("WARP license update failed")
 	}
-
 	return nil
+}
+
+func mergeWarpSecrets(data json.RawMessage, oldEndpoint *model.Endpoint) (json.RawMessage, error) {
+	var root map[string]interface{}
+	if err := json.Unmarshal(data, &root); err != nil || stringValue(root["type"]) != "warp" || oldEndpoint == nil {
+		return data, err
+	}
+	var oldOptions map[string]interface{}
+	if err := json.Unmarshal(oldEndpoint.Options, &oldOptions); err != nil {
+		return nil, err
+	}
+	if key := stringValue(root["private_key"]); (key == "" || isRedactedSecret(key)) && stringValue(oldOptions["private_key"]) != "" {
+		root["private_key"] = stringValue(oldOptions["private_key"])
+	}
+	var oldExt map[string]interface{}
+	if err := json.Unmarshal(oldEndpoint.Ext, &oldExt); err != nil {
+		return nil, err
+	}
+	ext := mapValue(root["ext"])
+	if ext == nil {
+		ext = map[string]interface{}{}
+		root["ext"] = ext
+	}
+	for _, key := range []string{"device_id", "access_token", "license_key"} {
+		if value := stringValue(ext[key]); value == "" || isRedactedSecret(value) {
+			ext[key] = oldExt[key]
+		}
+	}
+	delete(ext, "access_token_set")
+	delete(ext, "license_key_set")
+	return json.Marshal(root)
+}
+
+func warpLicense(endpoint *model.Endpoint) string {
+	if endpoint == nil {
+		return ""
+	}
+	var ext map[string]interface{}
+	if json.Unmarshal(endpoint.Ext, &ext) != nil {
+		return ""
+	}
+	return stringValue(ext["license_key"])
+}
+
+func redactWarpSecrets(endpoint map[string]interface{}) {
+	setRedactedSecret(endpoint, "private_key", "private_key_set")
+	ext := mapValue(endpoint["ext"])
+	if ext != nil {
+		setRedactedSecret(ext, "access_token", "access_token_set")
+		setRedactedSecret(ext, "license_key", "license_key_set")
+	}
+	for _, raw := range listValue(endpoint["peers"]) {
+		peer := mapValue(raw)
+		if peer != nil {
+			setRedactedSecret(peer, "pre_shared_key", "pre_shared_key_set")
+		}
+	}
 }
 
 func readWarpResponse(resp *http.Response) string {
@@ -251,7 +371,7 @@ func readWarpBody(resp *http.Response) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(body)) > maxWarpResponseBytes {
-		return nil, common.NewError("warp API response is too large")
+		return nil, common.NewError("WARP API response is too large")
 	}
 	return body, nil
 }
