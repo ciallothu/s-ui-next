@@ -160,7 +160,7 @@ func (s *WarpService) RegisterWarp(endpoint *model.Endpoint) error {
 	}
 	var details struct {
 		Config struct {
-			ClientID string `json:"client_id"`
+			ClientID  string `json:"client_id"`
 			Interface struct {
 				Addresses struct {
 					IPv4 string `json:"v4"`
