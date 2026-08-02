@@ -9,7 +9,7 @@
 [![Downloads](https://img.shields.io/github/downloads/ciallothu/s-ui-next/total.svg)](https://github.com/ciallothu/s-ui-next/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-S-UI Next is a downstream project based on [alireza0/s-ui](https://github.com/alireza0/s-ui). It keeps the original panel and database model while adding a versioned API, Android and iPhone management apps, stronger administrator authentication, searchable traffic and connection records, safer subscription links, and transactional WireGuard management.
+S-UI Next is a downstream project based on [alireza0/s-ui](https://github.com/alireza0/s-ui). It keeps the original panel and database model while adding a versioned API, Android and iPhone management apps, stronger administrator authentication, searchable traffic and connection records, safer subscription links, WireGuard relays between VPS hosts, and directly managed Cloudflare WARP egress.
 
 The embedded core currently follows `sing-box v1.13.14`. Existing Web management, API v2, database, and subscription interfaces remain available, so an existing S-UI installation can be migrated without rebuilding its configuration from scratch.
 
@@ -24,7 +24,7 @@ The embedded core currently follows `sing-box v1.13.14`. Existing Web management
 - Manage users individually or in bulk, including traffic quota, expiry, group, enable/disable state, and subscription options.
 - View system state, online users, resource traffic, connection details, logs, administrator changes, and historical usage without leaving the panel.
 - Keep historical charts stable until they are refreshed, or enable the separate real-time mode when live traffic is needed.
-- Handle long usernames, IPv6 addresses, targets, and log messages with fixed desktop columns, horizontal scrolling, and a compact mobile layout.
+- Read long usernames, IPv6 addresses, targets, and log messages clearly on desktop and small screens without overlapping content.
 - Use dark or light themes in English, Farsi, Vietnamese, Simplified Chinese, Traditional Chinese, Russian, Japanese, French, or Latin.
 
 ### Mobile app
@@ -79,19 +79,13 @@ See [`docs/mobile-api.md`](docs/mobile-api.md) for routes, parameters, and respo
 
 ### Tunnels and egress
 
-WireGuard endpoints use a dedicated editor and backend service rather than treating every field as interchangeable sing-box JSON.
-
-- Keep local addresses and listening, remote connection mode, runtime AllowedIPs, allocation networks, and client profile export separate.
-- Generate private keys and PSKs with secure randomness. Secret values are redacted in normal resource responses and preserved when a redacted form is saved.
-- Export a controlled client configuration or QR code only through an explicit action.
-- Generate panel-managed clients or add the public key of an existing VPS or device without storing its private key.
-- Support dynamic listeners, fixed remote peers, two-VPS relays, full-tunnel egress, and site gateways with routed local and remote networks.
-- Keep runtime peer routes independent from exported client routes. Default routes always require an explicit full-tunnel choice.
-- Optionally route traffic between peers through the S-UI Next server using a managed rule table. Equivalent user-authored rules are not duplicated or removed.
-- Validate IPv4/IPv6 host addresses, prefixes, peer ownership, routes, public endpoint host/port, and conflicting configuration before saving.
-- **Save** stores a validated configuration without changing the running core. **Save & apply** validates the complete generated configuration, restarts sing-box synchronously, checks its state, and restores the previous runtime if applying the change fails.
-
-Cloudflare WARP can be created directly as an S-UI Next egress without installing a local WARP client or bridging through SOCKS. Creating one requires acceptance of Cloudflare's terms; device tokens, licenses, and tunnel private keys are not returned in plaintext after they are saved.
+- Create panel-managed WireGuard clients or connect an existing VPS or device without giving its private key to the panel.
+- Support listening for a peer, connecting to a fixed peer, relaying between two VPS hosts, full egress, and site-to-site connections.
+- Configure local listening, peer connection details, traffic scope, and client profile export independently for different network arrangements.
+- Generate client profiles and QR codes only when needed, or manage a server-to-server connection without a client profile.
+- Receive accurate feedback when saving or applying WireGuard changes, without duplicate submissions or misleading duplicate-name errors. A failed apply keeps the previous working configuration.
+- Create Cloudflare WARP directly as an egress without installing a separate WARP client or bridging through SOCKS.
+- View saved WireGuard keys, WARP device credentials, and licenses only in a redacted form.
 
 ### Security and data safety
 
